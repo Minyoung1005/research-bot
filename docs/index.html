@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>research-bot — drive Claude Code &amp; Codex on your own machines, from Slack</title>
+<meta name="description" content="A Slack bot that runs Claude Code or the Codex CLI headlessly on your own GPUs and workstations, streams results back into the thread, and remembers the conversation." />
+<meta property="og:title" content="research-bot" />
+<meta property="og:description" content="Message your Slack bot. Research anywhere, anytime. Drive Claude Code or Codex on your own machines — straight from Slack." />
+<meta property="og:type" content="website" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%94%AC%3C/text%3E%3C/svg%3E" />
+<style>
+  :root{
+    --bg:#0d0f11; --surface:#16191d; --card:#1a1d21; --border:#262b31;
+    --border-soft:#20242a; --text:#e7eaee; --muted:#98a2ad; --faint:#6c7681;
+    --accent:#a78bfa; --accent-2:#8b5cf6; --success:#34d399; --slack:#4A154B;
+    --code-bg:#0b0d0f; --radius:14px; --maxw:1080px;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
+    line-height:1.65;-webkit-font-smoothing:antialiased;font-size:16px}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code{font-family:var(--mono);font-size:.88em;background:#20252b;color:#e9d5ff;
+    padding:.12em .42em;border-radius:6px;border:1px solid var(--border-soft)}
+  pre{margin:0}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px}
+  h2{font-size:1.7rem;letter-spacing:-.02em;margin:0 0 6px}
+  h3{font-size:1.12rem;margin:0 0 6px}
+  section{padding:64px 0;border-top:1px solid var(--border-soft)}
+  .lead{color:var(--muted);max-width:70ch;margin:0 0 32px}
+
+  /* nav */
+  header.nav{position:sticky;top:0;z-index:50;background:rgba(13,15,17,.82);
+    backdrop-filter:blur(10px);border-bottom:1px solid var(--border-soft)}
+  .nav-inner{display:flex;align-items:center;gap:18px;height:58px}
+  .brand{display:flex;align-items:center;gap:9px;font-weight:700;letter-spacing:-.01em}
+  .brand .logo{width:28px;height:28px;display:grid;place-items:center;border-radius:8px;
+    background:linear-gradient(135deg,var(--slack),#7a2e6e);font-size:16px}
+  .nav-links{margin-left:auto;display:flex;gap:22px;align-items:center}
+  .nav-links a{color:var(--muted);font-size:.92rem;font-weight:500}
+  .nav-links a:hover{color:var(--text);text-decoration:none}
+  .nav-cta{background:var(--accent);color:#1a1030!important;padding:7px 14px;border-radius:8px;
+    font-weight:600}
+  .nav-cta:hover{background:#b9a3ff;text-decoration:none}
+  @media(max-width:720px){.nav-links a:not(.nav-cta){display:none}}
+
+  /* hero */
+  .hero{padding:84px 0 68px;text-align:center;position:relative;overflow:hidden}
+  .hero::before{content:"";position:absolute;inset:0;z-index:-1;
+    background:radial-gradient(60% 55% at 50% 0%,rgba(139,92,246,.16),transparent 70%)}
+  .eyebrow{display:inline-block;font-family:var(--mono);font-size:.8rem;color:var(--accent);
+    border:1px solid var(--border);background:var(--surface);padding:5px 13px;border-radius:999px;margin-bottom:22px}
+  .hero h1{font-size:clamp(2.3rem,6vw,3.8rem);line-height:1.04;letter-spacing:-.035em;margin:0 0 18px;font-weight:800}
+  .hero h1 .grad{background:linear-gradient(120deg,#c4b5fd,#8b5cf6 55%,#6d28d9);
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero p.tag{font-size:1.2rem;color:var(--muted);max-width:60ch;margin:0 auto 32px}
+  .btns{display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
+  .btn{display:inline-flex;align-items:center;gap:8px;padding:12px 22px;border-radius:10px;
+    font-weight:600;font-size:.98rem;border:1px solid transparent}
+  .btn.primary{background:var(--accent);color:#1a1030}
+  .btn.primary:hover{background:#b9a3ff;text-decoration:none}
+  .btn.ghost{background:var(--surface);border-color:var(--border);color:var(--text)}
+  .btn.ghost:hover{border-color:var(--accent);text-decoration:none}
+  .badges{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:30px}
+  .badges img{height:20px}
+
+  /* pillars */
+  .pillars{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:8px}
+  .pillar{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:22px}
+  .pillar .ic{font-size:1.5rem}
+  .pillar h3{margin:10px 0 4px;font-size:1.02rem}
+  .pillar p{margin:0;color:var(--muted);font-size:.92rem}
+  @media(max-width:720px){.pillars{grid-template-columns:1fr}}
+
+  /* terminal */
+  .term{background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius);
+    overflow:hidden;box-shadow:0 24px 60px -30px rgba(0,0,0,.8);margin-top:4px}
+  .term-bar{display:flex;align-items:center;gap:7px;padding:11px 15px;background:#14171b;border-bottom:1px solid var(--border-soft)}
+  .term-bar .dot{width:11px;height:11px;border-radius:50%}
+  .term-bar .t{margin-left:10px;color:var(--faint);font-size:.8rem;font-family:var(--mono)}
+  .term pre{padding:20px;overflow-x:auto;font-family:var(--mono);font-size:.86rem;line-height:1.85;color:#cdd6e0}
+  .term .u{color:#7dd3fc}.term .b{color:#c4b5fd}.term .ok{color:var(--success)}
+  .term .m{color:var(--faint)}.term .f{color:#fbbf24}
+
+  /* feature grid */
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  @media(max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:620px){.grid{grid-template-columns:1fr}}
+  .feat{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;transition:border-color .15s,transform .15s}
+  .feat:hover{border-color:#3a3350;transform:translateY(-2px)}
+  .feat .ic{font-size:1.35rem}
+  .feat h3{margin:11px 0 5px;font-size:1rem}
+  .feat p{margin:0;color:var(--muted);font-size:.9rem;line-height:1.55}
+
+  /* callout */
+  .callout{background:linear-gradient(180deg,var(--surface),var(--card));border:1px solid var(--border);
+    border-radius:var(--radius);padding:26px 28px}
+  .callout ul{margin:14px 0 0;padding-left:0;list-style:none}
+  .callout li{padding:7px 0 7px 26px;position:relative;color:var(--muted)}
+  .callout li::before{content:"→";position:absolute;left:0;color:var(--accent)}
+  .callout li b{color:var(--text)}
+
+  /* steps */
+  .step{display:flex;gap:18px;margin-bottom:22px}
+  .step .n{flex:none;width:34px;height:34px;border-radius:50%;background:var(--surface);
+    border:1px solid var(--border);display:grid;place-items:center;font-weight:700;color:var(--accent)}
+  .step .body{flex:1;min-width:0}
+  .step h3{margin:4px 0 10px}
+  .codeblock{position:relative;background:var(--code-bg);border:1px solid var(--border);
+    border-radius:10px;margin:8px 0}
+  .codeblock pre{padding:15px 16px;overflow-x:auto;font-family:var(--mono);font-size:.85rem;color:#cdd6e0}
+  .copy{position:absolute;top:8px;right:8px;background:#20252b;border:1px solid var(--border);
+    color:var(--muted);font-size:.72rem;padding:4px 9px;border-radius:6px;cursor:pointer;font-family:var(--sans)}
+  .copy:hover{color:var(--text);border-color:var(--accent)}
+  details{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:2px 16px;margin:10px 0}
+  summary{cursor:pointer;padding:12px 0;font-weight:600;color:var(--text)}
+  details[open] summary{border-bottom:1px solid var(--border-soft);margin-bottom:12px}
+
+  /* tables */
+  .tablewrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius)}
+  table{border-collapse:collapse;width:100%;font-size:.9rem}
+  th,td{text-align:left;padding:11px 15px;border-bottom:1px solid var(--border-soft);vertical-align:top}
+  th{background:var(--surface);color:var(--text);font-weight:600;white-space:nowrap}
+  tr:last-child td{border-bottom:none}
+  td code{white-space:nowrap}
+  .rx{font-size:1.1rem}
+
+  /* doc cards */
+  .doccards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  @media(max-width:820px){.doccards{grid-template-columns:1fr}}
+  .doccard{display:block;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px 20px;color:var(--text)}
+  .doccard:hover{border-color:var(--accent);text-decoration:none}
+  .doccard h3{margin:0 0 5px;font-size:1rem}
+  .doccard p{margin:0;color:var(--muted);font-size:.86rem}
+  .doccard .arrow{color:var(--accent);font-size:.86rem;margin-top:8px;display:inline-block}
+
+  /* layout tree */
+  .tree{background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius);
+    padding:20px 22px;font-family:var(--mono);font-size:.84rem;line-height:1.9;color:#cdd6e0;overflow-x:auto}
+  .tree .c{color:var(--faint)}
+
+  footer{border-top:1px solid var(--border-soft);padding:40px 0;color:var(--muted);font-size:.9rem}
+  .foot-inner{display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between}
+  .foot-links{display:flex;gap:20px;flex-wrap:wrap}
+  .foot-links a{color:var(--muted)}
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="#top"><span class="logo">🔬</span> research-bot</a>
+    <nav class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#quickstart">Quickstart</a>
+      <a href="#usage">Usage</a>
+      <a href="#docs">Docs</a>
+      <a class="nav-cta" href="https://github.com/Minyoung1005/research-bot">GitHub ★</a>
+    </nav>
+  </div>
+</header>
+
+<a id="top"></a>
+<div class="hero">
+  <div class="wrap">
+    <span class="eyebrow">Slack · Socket Mode · your hardware</span>
+    <h1>Message your Slack bot.<br><span class="grad">Research anywhere, anytime.</span></h1>
+    <p class="tag">Drive <b>Claude Code</b> or the <b>OpenAI Codex</b> CLI on your own GPUs and
+      workstations — headlessly, straight from Slack. It streams results back into the thread
+      and remembers the whole conversation.</p>
+    <div class="btns">
+      <a class="btn primary" href="#quickstart">Get started →</a>
+      <a class="btn ghost" href="https://github.com/Minyoung1005/research-bot">View on GitHub</a>
+    </div>
+    <div class="badges">
+      <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="MIT License" />
+      <img src="https://img.shields.io/badge/python-3.9+-blue.svg" alt="Python 3.9+" />
+      <img src="https://img.shields.io/badge/Slack-Bolt%20%2B%20Socket%20Mode-4A154B?logo=slack" alt="Slack Bolt + Socket Mode" />
+      <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs welcome" />
+    </div>
+  </div>
+</div>
+
+<section style="border-top:none;padding-top:8px">
+  <div class="wrap">
+    <div class="pillars">
+      <div class="pillar"><div class="ic">📱</div><h3>From your pocket</h3>
+        <p>Launch experiments from the bus, the couch, the conference hallway.</p></div>
+      <div class="pillar"><div class="ic">🖥️</div><h3>On your hardware</h3>
+        <p>Agents run on <i>your</i> GPUs — no cloud runner, no data leaving your lab.</p></div>
+      <div class="pillar"><div class="ic">🔔</div><h3>Zero babysitting</h3>
+        <p>Long jobs run in tmux and ping the thread the moment they finish.</p></div>
+    </div>
+
+    <div style="margin-top:34px" class="term">
+      <div class="term-bar">
+        <span class="dot" style="background:#ff5f56"></span>
+        <span class="dot" style="background:#ffbd2e"></span>
+        <span class="dot" style="background:#27c93f"></span>
+        <span class="t">#research — Slack</span>
+      </div>
+<pre><span class="u">You</span>    │ @research-bot plot the training curves from last night's run
+<span class="b">Bot</span>    │ 👀  ⏳ <code>server</code> running...
+       │ <span class="ok">✅ server done!</span>
+       │ Loss curves attached — validation plateaus at epoch 40. <span class="f">[loss.png]</span>
+<span class="u">You</span>    │ @research-bot rerun with lr=3e-4 and ping me when it's done
+<span class="b">Bot</span>    │ <span class="ok">✅</span> Launched in tmux session <code>training</code>. I'll notify this thread.
+       │ <span class="m">... hours later ...</span>
+       │ 🖥️ server: <span class="ok">✅ done — final val acc 91.2%</span></pre>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Why not the official @Claude Slack app?</h2>
+    <p class="lead">Use it if you can! But many workspaces — especially enterprise ones — don't
+      allow installing third-party Slack apps, so the official integration is often simply
+      unavailable. research-bot sidesteps that.</p>
+    <div class="callout">
+      <ul>
+        <li><b>It's your own custom app</b>, created from a one-page manifest under your workspace —
+          custom internal apps are typically permitted where marketplace installs aren't.</li>
+        <li><b>Your tokens, your machines</b> — the bot talks to Slack over Socket Mode from a
+          machine you own; nothing is installed from a vendor, no code or data leaves your hardware.</li>
+        <li><b>It does things the official app can't</b> — SSH-route commands across all your GPU
+          machines, launch training runs in tmux, ping you back hours later, and run Codex as easily as Claude.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <h2>Features</h2>
+    <p class="lead">Everything you need to run a research agent from Slack — sessions, multi-machine
+      routing, live output, memory, and guardrails.</p>
+    <div class="grid">
+      <div class="feat"><div class="ic">🧵</div><h3>Thread = session</h3>
+        <p>Each Slack thread maps to a persistent Claude Code session (<code>--resume</code>), per machine. Follow-ups keep full context.</p></div>
+      <div class="feat"><div class="ic">🖥️</div><h3>Multi-machine routing</h3>
+        <p><code>/server &lt;cmd&gt;</code> targets a specific machine over SSH; <code>/all</code> broadcasts to every machine.</p></div>
+      <div class="feat"><div class="ic">🤖</div><h3>Agent-agnostic</h3>
+        <p>First-class Claude Code <i>and</i> Codex CLI: <code>--model claude/sonnet</code>, <code>--model codex/gpt-4.1</code>, <code>--effort high</code> per command.</p></div>
+      <div class="feat"><div class="ic">📊</div><h3>Live dashboard</h3>
+        <p>Per-thread status cards you can click open and chat with — history + a message box, kept in sync with Slack. Localhost-only.</p></div>
+      <div class="feat"><div class="ic">💪</div><h3>Crash-safe</h3>
+        <p>In-flight runs are journaled; if the bot restarts mid-run it re-attaches to the tmux output and still delivers the result.</p></div>
+      <div class="feat"><div class="ic">🧠</div><h3>Two-layer memory</h3>
+        <p>Per-channel context auto-updated after every command, plus a SQLite FTS5 history you query with <code>/history &lt;q&gt;</code>.</p></div>
+      <div class="feat"><div class="ic">📎</div><h3>Attachments, budgeted</h3>
+        <p>Drop files into Slack; they're copied to the target machine. <code>ATTACHMENT_MODE=text</code> keeps token-hungry media out of context.</p></div>
+      <div class="feat"><div class="ic">🔔</div><h3>Long-job pings</h3>
+        <p>Long tasks launch in background tmux and ping the exact channel + thread via <code>notify.py</code> when they finish.</p></div>
+      <div class="feat"><div class="ic">✍️</div><h3>Style guardrails</h3>
+        <p><code>STYLE.md</code> is injected into every prompt: ban words you never want to see, set tone. Re-read live — no restart.</p></div>
+      <div class="feat"><div class="ic">📚</div><h3>Recipe playbooks</h3>
+        <p>Drop markdown playbooks in <code>recipes/</code>; every run gets a one-line index and reads the full recipe only when relevant.</p></div>
+      <div class="feat"><div class="ic">⚡</div><h3>Terminal mode</h3>
+        <p>At the keyboard? <code>/channel my-project</code> loads that channel's context for a fast brainstorm; <code>/slack</code> posts a clean summary back.</p></div>
+      <div class="feat"><div class="ic">👀</div><h3>Watch live</h3>
+        <p><code>watch_claude.py</code> tails every active session in auto-split tmux panes.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="quickstart">
+  <div class="wrap">
+    <h2>Quickstart</h2>
+    <p class="lead"><b>Prereqs:</b> Python 3.9+, <code>tmux</code>, and the Claude Code CLI installed and
+      logged in on every machine that will run commands. The optional Codex runner needs the <code>codex</code> CLI.</p>
+
+    <div class="step">
+      <div class="n">1</div>
+      <div class="body">
+        <h3>Create the Slack app <span style="color:var(--faint);font-weight:400;font-size:.85rem">— ~3 min, all copy-paste, no public URL</span></h3>
+        <p style="color:var(--muted);margin:0 0 6px">Open <a href="https://api.slack.com/apps">api.slack.com/apps</a> →
+          <b>Create New App</b> → <b>From a manifest</b> → pick your workspace → paste the manifest below.
+          Then grab an <b>App-Level Token</b> (<code>connections:write</code> → <code>xapp-…</code>), install to the
+          workspace, and copy the <b>Bot User OAuth Token</b> (<code>xoxb-…</code>).</p>
+        <details>
+          <summary>📋 slack-app-manifest.yaml — click to expand</summary>
+          <div class="codeblock"><button class="copy">Copy</button><pre>display_information:
+  name: research-bot
+  description: Drive Claude Code on your own machines from Slack
+  background_color: "#1a1d21"
+features:
+  bot_user:
+    display_name: research-bot
+    always_online: true
+oauth_config:
+  scopes:
+    bot:
+      - app_mentions:read
+      - channels:history
+      - groups:history
+      - im:history
+      - im:read
+      - im:write
+      - mpim:history
+      - chat:write
+      - files:read
+      - files:write
+      - reactions:read
+      - reactions:write
+settings:
+  event_subscriptions:
+    bot_events:
+      - app_mention
+      - message.im
+      - reaction_added
+      - reaction_removed
+  interactivity:
+    is_enabled: false
+  org_deploy_enabled: false
+  socket_mode_enabled: true
+  token_rotation_enabled: false</pre></div>
+          <p style="color:var(--muted);font-size:.86rem;margin:2px 0 6px">💡 Rename the bot to anything you like
+            (e.g. <code>ClaudeBot</code>) by editing <code>name</code> and <code>display_name</code> here.</p>
+        </details>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="n">2</div>
+      <div class="body">
+        <h3>Install</h3>
+        <div class="codeblock"><button class="copy">Copy</button><pre>git clone https://github.com/Minyoung1005/research-bot.git
+cd research-bot
+pip install -r requirements.txt
+cp .env.example .env   # then fill in the two tokens + MACHINE_NAME</pre></div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="n">3</div>
+      <div class="body">
+        <h3>Run it <span style="color:var(--faint);font-weight:400;font-size:.85rem">— tmux recommended so it survives your terminal</span></h3>
+        <div class="codeblock"><button class="copy">Copy</button><pre>tmux new-session -d -s bot "python bot.py"
+tmux new-session -d -s dashboard "python dashboard.py"   # optional, http://localhost:8080</pre></div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="n">4</div>
+      <div class="body">
+        <h3>Use it in Slack</h3>
+        <p style="color:var(--muted);margin:0 0 6px"><code>/invite @research-bot</code> to a channel, then just mention it (DMs work with no mention):</p>
+        <div class="codeblock"><button class="copy">Copy</button><pre>@research-bot what's the GPU utilization right now?</pre></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="usage">
+  <div class="wrap">
+    <h2>Command reference</h2>
+    <p class="lead">Mention the bot in a channel, or DM it. Flags like <code>--model</code> and
+      <code>--effort</code> can appear anywhere in the message — they're stripped before the command reaches the agent.</p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Message</th><th>What happens</th></tr></thead>
+        <tbody>
+          <tr><td><code>@research-bot &lt;command&gt;</code></td><td>Run on this channel's default machine</td></tr>
+          <tr><td><code>@research-bot /server &lt;command&gt;</code></td><td>Run on machine <code>server</code> over SSH</td></tr>
+          <tr><td><code>@research-bot /all &lt;command&gt;</code></td><td>Broadcast to every machine</td></tr>
+          <tr><td><code>… --model codex</code></td><td>Run with the Codex CLI instead of Claude</td></tr>
+          <tr><td><code>… --model claude/sonnet</code></td><td>Pick a specific Claude model for this command</td></tr>
+          <tr><td><code>… --effort high</code></td><td>Reasoning-effort level for Claude (<code>low</code>–<code>max</code>)</td></tr>
+          <tr><td><code>… --attachments text</code></td><td>Attachment mode for this message (<code>full</code> / <code>text</code> / <code>none</code>)</td></tr>
+          <tr><td><code>@research-bot /history &lt;query&gt;</code></td><td>Full-text search over everything the bot has done</td></tr>
+          <tr><td><code>@research-bot summary</code> / <code>recap</code></td><td>Answer using the channel's recent history</td></tr>
+          <tr><td><code>@research-bot /idea &lt;text&gt;</code></td><td>File an idea into your vault (needs <code>IDEAS_VAULT</code>)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2 style="margin-top:44px">Reaction controls</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Reaction</th><th>On</th><th>Effect</th></tr></thead>
+        <tbody>
+          <tr><td class="rx">👀</td><td>your message</td><td>Added by the bot: command acknowledged, running</td></tr>
+          <tr><td class="rx">👁</td><td>thread root</td><td>Added by the bot: this thread is on the dashboard (auto-managed)</td></tr>
+          <tr><td class="rx">❌</td><td>any message in a thread</td><td>Kill every running session in that thread</td></tr>
+          <tr><td class="rx">👍</td><td>a user message</td><td>Re-run that command</td></tr>
+          <tr><td class="rx">📁</td><td>thread root</td><td>Archive the thread (remove 📁 to revive)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2 style="margin-top:44px">Multi-machine, in one line each</h2>
+    <p class="lead">Run <code>bot.py</code> on one <b>gateway</b> machine with SSH access to your workers.
+      Add a line per worker to the gateway's <code>.env</code> — the machine list is derived automatically,
+      and attached files are <code>scp</code>'d over before each run. Workers just need <code>tmux</code> + the <code>claude</code> CLI.</p>
+    <div class="codeblock"><button class="copy">Copy</button><pre>SSH_server=you@server.example.com        # port 22
+SSH_cluster=you@10.0.0.7:43284           # custom port</pre></div>
+  </div>
+</section>
+
+<section id="docs">
+  <div class="wrap">
+    <h2>Deep-dive guides</h2>
+    <p class="lead">The pages above are the quick tour; these go deeper. They render right here on GitHub.</p>
+    <div class="doccards">
+      <a class="doccard" href="https://github.com/Minyoung1005/research-bot/blob/main/docs/setup.md">
+        <h3>Setup</h3><p>Slack app creation, install, <code>.env</code>, first run, running persistently.</p><span class="arrow">Read →</span></a>
+      <a class="doccard" href="https://github.com/Minyoung1005/research-bot/blob/main/docs/usage.md">
+        <h3>Usage</h3><p>Full command reference, sessions, reactions, files, history search, customization.</p><span class="arrow">Read →</span></a>
+      <a class="doccard" href="https://github.com/Minyoung1005/research-bot/blob/main/docs/multi-machine.md">
+        <h3>Multi-machine</h3><p>Gateway/worker architecture, SSH configuration, routing rules.</p><span class="arrow">Read →</span></a>
+      <a class="doccard" href="https://github.com/Minyoung1005/research-bot/blob/main/docs/architecture.md">
+        <h3>Architecture</h3><p>How it works inside — life of a command, sessions, crash recovery. For contributors.</p><span class="arrow">Read →</span></a>
+      <a class="doccard" href="https://github.com/Minyoung1005/research-bot/blob/main/docs/troubleshooting.md">
+        <h3>Troubleshooting</h3><p>Symptom → fix, for everything that commonly goes wrong.</p><span class="arrow">Read →</span></a>
+      <a class="doccard" href="https://github.com/Minyoung1005/research-bot/blob/main/README.md">
+        <h3>README</h3><p>The full project tour, configuration reference, and security notes.</p><span class="arrow">Read →</span></a>
+    </div>
+
+    <h2 style="margin-top:44px">Repo layout</h2>
+    <div class="tree">bot.py            <span class="c"># the Slack bot: routing, tmux runners, sessions, recovery</span>
+dashboard.py      <span class="c"># local web dashboard of live thread cards (+ End button)</span>
+history.py        <span class="c"># SQLite FTS5 persistent conversation store</span>
+watch_claude.py   <span class="c"># tail active sessions in auto-split tmux panes</span>
+notify.py         <span class="c"># "job finished" pings back to the right channel + thread</span>
+chat_to_slack.py  <span class="c"># terminal-session bridge: load context / post summaries</span>
+.claude/commands/ <span class="c"># /channel and /slack commands for terminal Claude Code</span>
+STYLE.md          <span class="c"># editable writing rules injected into every prompt</span>
+recipes/          <span class="c"># task playbooks indexed into prompts</span>
+contexts/         <span class="c"># per-channel context memory (auto-committed by the bot)</span></div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot-inner">
+    <div>
+      <div class="brand" style="margin-bottom:6px"><span class="logo">🔬</span> research-bot</div>
+      <div style="color:var(--faint)">MIT License · © 2026 Minyoung Hwang · Stars, PRs &amp; issues welcome 💜</div>
+    </div>
+    <div class="foot-links">
+      <a href="https://github.com/Minyoung1005/research-bot">GitHub</a>
+      <a href="https://github.com/Minyoung1005/research-bot/issues">Issues</a>
+      <a href="https://github.com/Minyoung1005/research-bot/pulls">Pull requests</a>
+      <a href="https://github.com/Minyoung1005/research-bot/blob/main/LICENSE">License</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+  document.querySelectorAll('.copy').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var pre = btn.parentElement.querySelector('pre');
+      navigator.clipboard.writeText(pre.innerText).then(function(){
+        var old = btn.textContent; btn.textContent = 'Copied ✓';
+        setTimeout(function(){ btn.textContent = old; }, 1400);
+      });
+    });
+  });
+</script>
+</body>
+</html>
