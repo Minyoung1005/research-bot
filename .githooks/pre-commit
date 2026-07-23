@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Pre-commit leak guard for this PUBLIC repo. Blocks a commit when the staged
+# changes contain secrets, runtime/personal files, or internal markers.
+#
+# Activate (once per clone):  git config core.hooksPath .githooks
+# Bypass a false positive:     git commit --no-verify
+#
+# This hook is committed and generic. Your private block list (internal
+# codenames, corp IPs, ...) lives in local/guard-personal.txt, which is
+# gitignored — so the denylist itself never gets published.
+set -uo pipefail
+
+fail=0
+note(){ printf '  \033[31m✗\033[0m %s\n' "$1"; }
+
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$staged" ] && exit 0
+
+# 1) Filenames that must never be committed
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
+  case "$f" in
+    .env|*.bak|CLAUDE.md)  note "forbidden file staged: $f"; fail=1 ;;
+    contexts/*) [ "$f" = "contexts/.gitkeep" ] || { note "context memory staged: $f"; fail=1; } ;;
+    local/*)    [ "$f" = "local/.gitkeep" ]    || { note "local scratch file staged: $f"; fail=1; } ;;
+  esac
+done <<< "$staged"
+
+# Added lines only, excluding this hook dir and the local scratch dir.
+added=$(git diff --cached -U0 --diff-filter=ACM -- . ':(exclude).githooks/**' ':(exclude)local/**' \
+        | grep '^+' | grep -v '^+++' || true)
+
+# 2) Generic secret patterns
+secret_re='(xox[bap]-[0-9]|xapp-[0-9]|sk-(proj|ant)-|AKIA[0-9A-Z]{16}|ghp_[0-9A-Za-z]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)'
+hits=$(printf '%s\n' "$added" | grep -nEi "$secret_re" || true)
+if [ -n "$hits" ]; then
+  note "possible secret in staged changes:"; printf '%s\n' "$hits" | sed 's/^/      /'; fail=1
+fi
+
+# 3) Personal / internal markers from the local (gitignored) block list
+bl="local/guard-personal.txt"
+if [ -f "$bl" ]; then
+  while IFS= read -r pat; do
+    [ -z "$pat" ] && continue
+    case "$pat" in \#*) continue ;; esac
+    m=$(printf '%s\n' "$added" | grep -nEi -- "$pat" || true)
+    [ -n "$m" ] && { note "internal marker /$pat/ in staged changes:"; printf '%s\n' "$m" | sed 's/^/      /'; fail=1; }
+  done < "$bl"
+fi
+
+if [ "$fail" -ne 0 ]; then
+  printf '\n\033[31mcommit blocked by leak guard\033[0m — fix the above, or bypass on purpose with: git commit --no-verify\n\n'
+  exit 1
+fi
+exit 0

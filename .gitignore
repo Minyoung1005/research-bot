@@ -1,6 +1,9 @@
 .env
+.env.*
+!.env.example
 __pycache__/
 *.pyc
+*.bak
 
 # runtime state
 data/
@@ -10,3 +13,14 @@ cancel/
 active_runs.json
 thread_claude_sessions.json
 .claude/settings.local.json
+
+# per-channel context memory (runtime) — keep only the placeholder
+contexts/*
+!contexts/.gitkeep
+
+# personal / internal briefing — never publish
+CLAUDE.md
+
+# personal scratch space: put anything private here, it's never committed
+local/*
+!local/.gitkeep
