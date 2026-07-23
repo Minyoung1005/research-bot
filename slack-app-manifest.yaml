@@ -1,0 +1,35 @@
+display_information:
+  name: research-bot
+  description: Drive Claude Code on your own machines from Slack
+  background_color: "#1a1d21"
+features:
+  bot_user:
+    display_name: research-bot
+    always_online: true
+oauth_config:
+  scopes:
+    bot:
+      - app_mentions:read
+      - channels:history
+      - groups:history
+      - im:history
+      - im:read
+      - im:write
+      - mpim:history
+      - chat:write
+      - files:read
+      - files:write
+      - reactions:read
+      - reactions:write
+settings:
+  event_subscriptions:
+    bot_events:
+      - app_mention
+      - message.im
+      - reaction_added
+      - reaction_removed
+  interactivity:
+    is_enabled: false
+  org_deploy_enabled: false
+  socket_mode_enabled: true
+  token_rotation_enabled: false

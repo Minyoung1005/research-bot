@@ -1,0 +1,12 @@
+.env
+__pycache__/
+*.pyc
+
+# runtime state
+data/
+uploads/
+threads/
+cancel/
+active_runs.json
+thread_claude_sessions.json
+.claude/settings.local.json
