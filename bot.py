@@ -1416,14 +1416,10 @@ def parse_and_run(text, say, thread_ts, channel_id, user_id,
     if client and event_ts:
         ack_reaction(client, channel_id, event_ts, add=True)
 
-    # Mark the thread "alive" on the dashboard (once) and put the 👁 indicator on
-    # the thread's root message so Slack shows which threads are on the board.
+    # Mark the thread "alive" on the dashboard (once). No Slack reaction — the 👀
+    # ack is the only reaction the bot adds; the 👁 indicator is only ever removed.
     if client and not dashboard.is_alive(channel_id, thread_ts):
         dashboard.set_alive(channel_id, thread_ts, True, title=command)
-        try:
-            client.reactions_add(channel=channel_id, timestamp=thread_ts, name=ALIVE_REACTION)
-        except Exception:
-            pass
 
     if session_key(channel_id, thread_ts) not in thread_sessions and client:
         fetch_thread_history(client, channel_id, thread_ts)
@@ -1712,14 +1708,8 @@ def archive_thread(channel_id, thread_ts):
 
 def revive_thread(channel_id, thread_ts):
     """Bring a thread back onto the dashboard. An explicitly revived 'ended' thread
-    is flipped back to idle so its card shows. The 👁 indicator is re-added so the
-    dashboard's Slack-reconcile keeps the thread on the board."""
+    is flipped back to idle so its card shows. No Slack reaction is added."""
     dashboard.set_alive(channel_id, thread_ts, True)
-    try:
-        app.client.reactions_add(channel=channel_id, name=ALIVE_REACTION, timestamp=thread_ts)
-    except Exception as e:
-        if "already_reacted" not in str(e):
-            print(f"[alive] reactions_add({ALIVE_REACTION}) failed: {e}", flush=True)
     try:
         with open(dashboard._thread_file(channel_id, thread_ts)) as f:
             if json.load(f).get("status") == "ended":
