@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Troubleshooting — research-bot docs</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%94%AC%3C/text%3E%3C/svg%3E" />
+<link rel="stylesheet" href="assets/docs.css" />
+</head>
+<body>
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html"><span class="logo">🔬</span> research-bot</a>
+    <nav class="nav-links"><a class="hideable" href="setup.html">Setup</a><a class="hideable" href="usage.html">Usage</a><a class="hideable" href="multi-machine.html">Multi-machine</a><a class="hideable" href="architecture.html">Architecture</a><a class="active" href="troubleshooting.html">Troubleshooting</a><a class="nav-cta" href="https://github.com/Minyoung1005/research-bot">GitHub ★</a></nav>
+  </div>
+</header>
+<main class="doc">
+  <div class="breadcrumb"><a href="index.html">Docs</a> / Troubleshooting</div>
+<h1 id="troubleshooting">Troubleshooting</h1>
+<p>Symptom → fix, roughly in the order people hit them.</p>
+<h2 id="the-bot-doesnt-respond-at-all">The bot doesn't respond at
+all</h2>
+<ul>
+<li>Is <code>bot.py</code> running and did it print
+<code>Bot started!</code>? If it crashed on startup, the console says
+which env var is missing.</li>
+<li>Wrong token pairing: <code>SLACK_BOT_TOKEN</code> must be the
+<code>xoxb-...</code> from <em>OAuth &amp; Permissions</em>,
+<code>SLACK_APP_TOKEN</code> the <code>xapp-...</code> app-level token
+with <code>connections:write</code>.</li>
+<li>Is the bot <strong>invited</strong> to the channel?
+(<code>/invite @research-bot</code>). DMs need no invite.</li>
+<li>App not reinstalled after a scope change: <em>Install App →
+Reinstall to Workspace</em>.</li>
+<li>The console logs every event
+(<code>[mention] channel=... text=...</code>). No log line = Slack isn't
+delivering the event (check the app's <em>Event Subscriptions</em> match
+the manifest).</li>
+</ul>
+<h2 id="sorry-you-dont-have-access-to-this-bot">"Sorry, you don't have
+access to this bot."</h2>
+<p>Your Slack user ID isn't in <code>ALLOWED_USERS</code>. Add it
+(profile → ⋮ → <em>Copy member ID</em>) and restart the bot.</p>
+<h2 id="claude-did-not-start-check-tmux-attach--t-claude-">"claude did
+not start. Check <code>tmux attach -t claude-...</code>"</h2>
+<p>The <code>claude</code> CLI isn't reachable in a non-interactive
+shell. The runner extends <code>PATH</code> with
+<code>~/.local/bin</code>, <code>~/.npm/bin</code>, and conda bins; if
+yours lives elsewhere, symlink it
+(<code>ln -s $(which claude) ~/.local/bin/claude</code>). Attach to the
+named tmux session to see the actual error — commonly a
+login/credentials prompt.</p>
+<h2 id="reply-says-usage-limit-hit">Reply says usage limit hit</h2>
+<p>Claude's API/subscription limit. The bot detects structured
+rate-limit errors and tells you rather than posting a broken reply —
+resend after the limit resets.</p>
+<h2
+id="-timed-out-30-min-limit"><code>⏰ timed out (30 min limit)</code></h2>
+<p>Single commands are capped at 30 minutes. For long work, ask for it
+as a background job ("run this in tmux and notify me") — that's the
+designed path and has no time limit.</p>
+<h2
+id="️-at-max-capacity-5-concurrent-tasks"><code>⚠️ at max capacity (5 concurrent tasks)</code></h2>
+<p>Five runs are already active on that machine. Wait, or ❌ threads you
+no longer need. Raise <code>MAX_CONCURRENT</code> in <code>bot.py</code>
+if your machine can take it.</p>
+<h2 id="remote-machine-problems">Remote machine problems</h2>
+<ul>
+<li><code>❌ No SSH config for ...</code> — add
+<code>SSH_&lt;name&gt;=user@host[:port]</code> to the
+<strong>gateway's</strong> <code>.env</code> and restart.</li>
+<li>SSH errors / hangs — the bot uses <code>BatchMode=yes</code>:
+password prompts fail by design. Test with
+<code>ssh -o BatchMode=yes user@host 'echo ok'</code>; set up key auth
+if it fails.</li>
+<li>Runs start but never finish — check <code>tmux</code> and
+<code>claude</code> exist on the worker for non-interactive shells
+(<code>ssh user@host 'claude --version'</code>).</li>
+</ul>
+<h2 id="attachments--result-files-dont-appear">Attachments / result
+files don't appear</h2>
+<p>The manifest includes <code>files:read</code> and
+<code>files:write</code>; if you created the app manually, add them and
+reinstall. Result files are only auto-uploaded when the agent's reply
+mentions their path.</p>
+<h2 id="dashboard-shows-nothing">Dashboard shows nothing</h2>
+<p>Run <code>dashboard.py</code> from the repo directory on the same
+machine as the bot — they share state through <code>threads/</code>,
+<code>active_runs.json</code>, and <code>cancel/</code> in the repo.
+Cards appear after the first command completes.</p>
+<h2 id="a-run-was-lost-when-the-bot-restarted">A run was lost when the
+bot restarted</h2>
+<p>It usually isn't: journaled runs are re-attached and delivered after
+restart. If the restart killed the tmux session itself, the bot posts
+"interrupted — please resend" in the affected thread. If you saw
+neither, check <code>active_runs.json</code> for stale entries and the
+console <code>[recover]</code> lines.</p>
+<h2 id="replies-arrive-with-weird-formatting">Replies arrive with weird
+formatting</h2>
+<p>Slack's own quirk-set (no real Markdown). The bot converts
+headings/bold/links/bullets; deeply nested Markdown or tables inside
+replies will still look plain. Complex artifacts are better written to a
+file and shared.</p>
+<p>Still stuck? <a
+href="https://github.com/Minyoung1005/research-bot/issues">Open an
+issue</a> with the console output around the failure.</p>
+</main>
+<footer class="doc-footer">
+  MIT License · © 2026 Minyoung Hwang ·
+  <a href="https://github.com/Minyoung1005/research-bot">GitHub</a> ·
+  <a href="https://github.com/Minyoung1005/research-bot/issues">Issues</a> ·
+  <a href="index.html">Docs home</a>
+</footer>
+</body>
+</html>

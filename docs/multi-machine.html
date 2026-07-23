@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Multi-machine — research-bot docs</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%94%AC%3C/text%3E%3C/svg%3E" />
+<link rel="stylesheet" href="assets/docs.css" />
+</head>
+<body>
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html"><span class="logo">🔬</span> research-bot</a>
+    <nav class="nav-links"><a class="hideable" href="setup.html">Setup</a><a class="hideable" href="usage.html">Usage</a><a class="active" href="multi-machine.html">Multi-machine</a><a class="hideable" href="architecture.html">Architecture</a><a class="hideable" href="troubleshooting.html">Troubleshooting</a><a class="nav-cta" href="https://github.com/Minyoung1005/research-bot">GitHub ★</a></nav>
+  </div>
+</header>
+<main class="doc">
+  <div class="breadcrumb"><a href="index.html">Docs</a> / Multi-machine</div>
+<h1 id="multi-machine-setup">Multi-machine setup</h1>
+<p>Control every machine you own from one Slack workspace.</p>
+<h2 id="architecture">Architecture</h2>
+<p>One machine is the <strong>gateway</strong>: it runs
+<code>bot.py</code>, holds the Slack connection, and routes commands.
+Other machines are <strong>workers</strong>: the gateway SSHes in,
+starts a tmux session there, runs the agent CLI, and polls the output
+file over SSH until done.</p>
+<pre><code>Slack ⇄ gateway (bot.py) ── ssh ──▸ worker A (tmux + claude)
+                        └── ssh ──▸ worker B (tmux + claude)</code></pre>
+<p>Workers do <strong>not</strong> run the bot. They need:</p>
+<ul>
+<li><code>tmux</code> and the <code>claude</code> CLI (logged in)
+reachable from a non-interactive shell,</li>
+<li>SSH key access from the gateway (<code>BatchMode=yes</code> —
+password prompts will fail),</li>
+<li>a clone of this repo only if you want <code>watch_claude.py</code>
+there (optional).</li>
+</ul>
+<h2 id="configuration">Configuration</h2>
+<p>On the <strong>gateway</strong>, add one line per worker to
+<code>.env</code>:</p>
+<pre class="bash"><code>SSH_server=you@server.example.com        # default port 22
+SSH_cluster=you@10.0.0.7:43284           # custom port after the colon</code></pre>
+<p>The env var name after <code>SSH_</code> becomes the machine's Slack
+name: <code>/server</code>, <code>/cluster</code>. The machine list is
+derived automatically from <code>MACHINE_NAME</code> + all
+<code>SSH_*</code> entries.</p>
+<p>Test access first:</p>
+<pre class="bash"><code>ssh -o BatchMode=yes you@server.example.com &#39;tmux -V &amp;&amp; claude --version&#39;</code></pre>
+<p>If that prints versions without prompting, routing will work.</p>
+<h2 id="routing-rules">Routing rules</h2>
+<ol type="1">
+<li><code>/machinename</code> anywhere in the message wins.</li>
+<li>Otherwise the channel's entry in <code>CHANNEL_DEFAULTS</code> (e.g.
+<code>CHANNEL_DEFAULTS=C0AAAAAAAAA:server</code>) — handy for giving
+each project channel its own machine.</li>
+<li>Otherwise the gateway itself (<code>MACHINE_NAME</code>).</li>
+<li><code>/all</code> broadcasts to every known machine; each posts its
+own reply.</li>
+</ol>
+<h2 id="what-carries-over-to-workers">What carries over to workers</h2>
+<ul>
+<li><strong>Sessions</strong>: per-thread session UUIDs are tracked per
+machine, so <code>/server</code> follow-ups resume the right session on
+the right box.</li>
+<li><strong>Files</strong>: attachments you drop in Slack are
+<code>scp</code>'d to the worker at the same absolute path before the
+run starts.</li>
+<li><strong>Model/effort flags</strong>: <code>--model claude/...</code>
+and <code>--effort</code> apply on workers too (Codex runs are
+gateway-local).</li>
+</ul>
+<h2 id="multiple-bot-instances">Multiple bot instances</h2>
+<p>You can also run <code>bot.py</code> on several machines with the
+<em>same</em> Slack app (each machine gets its own <code>.env</code>
+with its own <code>MACHINE_NAME</code>). Set
+<code>IS_GATEWAY=true</code> on exactly one; the others set
+<code>IS_GATEWAY=false</code> and will ignore commands not addressed to
+them. In that mode, set
+<code>KNOWN_MACHINES=desktop,server,cluster</code> explicitly on every
+machine so each can recognize commands routed to its siblings. Note that
+Slack app-level tokens allow only one Socket Mode connection each —
+create one app token per machine.</p>
+<p>The single-gateway + SSH-workers setup is simpler and is what we
+recommend; run multiple instances only if machines can't SSH to each
+other.</p>
+</main>
+<footer class="doc-footer">
+  MIT License · © 2026 Minyoung Hwang ·
+  <a href="https://github.com/Minyoung1005/research-bot">GitHub</a> ·
+  <a href="https://github.com/Minyoung1005/research-bot/issues">Issues</a> ·
+  <a href="index.html">Docs home</a>
+</footer>
+</body>
+</html>

@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Architecture — research-bot docs</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%94%AC%3C/text%3E%3C/svg%3E" />
+<link rel="stylesheet" href="assets/docs.css" />
+</head>
+<body>
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html"><span class="logo">🔬</span> research-bot</a>
+    <nav class="nav-links"><a class="hideable" href="setup.html">Setup</a><a class="hideable" href="usage.html">Usage</a><a class="hideable" href="multi-machine.html">Multi-machine</a><a class="active" href="architecture.html">Architecture</a><a class="hideable" href="troubleshooting.html">Troubleshooting</a><a class="nav-cta" href="https://github.com/Minyoung1005/research-bot">GitHub ★</a></nav>
+  </div>
+</header>
+<main class="doc">
+  <div class="breadcrumb"><a href="index.html">Docs</a> / Architecture</div>
+<h1 id="architecture">Architecture</h1>
+<p>How a Slack message becomes an agent run and comes back. For
+contributors and the curious — the whole system is ~5 files of plain
+Python, no framework beyond Slack Bolt.</p>
+<h2 id="life-of-a-command">Life of a command</h2>
+<ol type="1">
+<li><strong>Event</strong> — Slack delivers an <code>app_mention</code>
+(or DM) over Socket Mode. The bot checks <code>ALLOWED_USERS</code>,
+reacts 👀, and parses the message:
+<code>--model</code>/<code>--effort</code> flags out,
+<code>/machine</code> target out, attachments downloaded to
+<code>uploads/&lt;ts&gt;/</code>.</li>
+<li><strong>Prompt build</strong> (first turn in a thread) — the prompt
+is assembled from: the standing instruction
+(<code>LANG_INSTRUCTION</code>, with the channel/thread IDs baked in so
+<code>notify.py</code> calls land back in the right place),
+<code>STYLE.md</code> rules, a channel-scope guard, the per-channel
+context file, recent thread history, and finally your command. On later
+turns only the new command is sent — the resumed session already holds
+the history.</li>
+<li><strong>Run</strong> — a dedicated tmux session
+<code>claude-&lt;timestamp&gt;</code> is created (locally, or on the
+worker over SSH) and runs:
+<pre><code>claude --session-id/--resume &lt;uuid&gt; --output-format stream-json --verbose \
+       --dangerously-skip-permissions  &lt; prompt.txt &gt; /tmp/claude_out_&lt;id&gt;.txt</code></pre>
+with a <code>___CLAUDE_DONE___</code> marker echoed at the end. The bot
+polls the output file (over SSH for workers) every 2–3 s, up to 30
+min.</li>
+<li><strong>Deliver</strong> — the stream-json is parsed down to the
+assistant's text, converted from Markdown to Slack formatting, and
+posted in ≤2800-char chunks with automatic retry/backoff (flaky networks
+drop Slack API calls surprisingly often). Files the reply mentions get
+uploaded. The 👀 comes off.</li>
+<li><strong>Bookkeeping</strong> — the exchange is appended to the
+in-memory thread session and the SQLite history; a
+<code>claude -p</code> call updates the channel's context file (≤500
+chars), which is committed and pushed so other machines stay in sync;
+the dashboard card is refreshed.</li>
+</ol>
+<h2 id="sessions">Sessions</h2>
+<p>Per-thread, per-machine session UUIDs live in
+<code>thread_claude_sessions.json</code>. First turn: the bot
+<em>generates</em> a UUID and passes <code>--session-id</code>; later
+turns pass <code>--resume</code>. If Claude forks the session (it
+reports the actual ID in its <code>init</code> event), the stored UUID
+is updated. Codex sessions work the same way, except the UUID is
+captured from Codex's run header and resumed with
+<code>codex exec resume</code>. Switching runner mid-thread invalidates
+the other runner's session — they can't share state, so the newcomer
+starts fresh with the thread history in its prompt.</p>
+<h2 id="crash-recovery">Crash recovery</h2>
+<p>Every run registers itself in <code>active_runs.json</code> (removed
+on clean exit). On startup the bot reads leftovers, and for each: if the
+tmux session is still alive, re-polls its output file and delivers the
+result as if nothing happened; if tmux is gone, posts "this run was
+interrupted, please resend". This is why restarting the bot mid-run is
+safe.</p>
+<h2 id="cancellation">Cancellation</h2>
+<p><code>❌</code> reaction or the dashboard's End button →
+<code>end_thread()</code>: every matching run's tmux session is killed,
+the session UUIDs are retired, and the run loop is woken via the
+done-marker so it exits without posting. The dashboard is a
+<strong>separate process</strong>; it requests cancellations by dropping
+<code>cancel/&lt;...&gt;.req</code> files that the bot's watcher thread
+picks up — the two processes share state only through files, so either
+can restart independently.</p>
+<h2 id="the-dashboard">The dashboard</h2>
+<p><code>dashboard.py</code> (Flask) renders one card per thread from
+<code>threads/*.json</code>, which the bot writes after each run
+(status, command, todos parsed from the stream-json, last output). It
+periodically asks <code>claude -p</code> for one-line summaries of
+running sessions. It never touches Slack directly.</p>
+<h2 id="history-store">History store</h2>
+<p><code>history.py</code> — SQLite (WAL) with <code>sessions</code> and
+<code>messages</code> tables plus an FTS5 index maintained by triggers.
+<code>/history &lt;query&gt;</code> searches it channel-scoped. The DB
+lives in <code>data/history.db</code>.</p>
+<h2 id="adding-a-new-agent-cli">Adding a new agent CLI</h2>
+<p>Everything model-related funnels through the <code>MODELS</code>
+registry and <code>run_model()</code> dispatch in
+<code>bot.py</code>:</p>
+<ol type="1">
+<li>Add a registry entry:
+<code>"gemini": {"runner": "gemini", "default_model": "gemini-2.5-pro"}</code>.</li>
+<li>Write a <code>run_gemini(...)</code> mirroring
+<code>run_codex()</code> — the pattern is: write prompt file → run CLI
+headlessly in tmux with output redirected → poll for the done marker →
+extract the final message → <code>_send_output(...)</code>.</li>
+<li>Add a branch in <code>run_model()</code>.</li>
+</ol>
+<p>The tmux/poll/deliver plumbing is agent-agnostic; a new runner is
+mostly "what command line do I execute and how do I pull the final text
+out".</p>
+</main>
+<footer class="doc-footer">
+  MIT License · © 2026 Minyoung Hwang ·
+  <a href="https://github.com/Minyoung1005/research-bot">GitHub</a> ·
+  <a href="https://github.com/Minyoung1005/research-bot/issues">Issues</a> ·
+  <a href="index.html">Docs home</a>
+</footer>
+</body>
+</html>

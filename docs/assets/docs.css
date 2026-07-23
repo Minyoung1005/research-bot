@@ -1,0 +1,75 @@
+/* Shared styles for the rendered guide pages (setup.html, usage.html, ...).
+   Matches the landing page (index.html). Generated pages link to this file. */
+:root{
+  --bg:#0d0f11; --surface:#16191d; --card:#1a1d21; --border:#262b31;
+  --border-soft:#20242a; --text:#e7eaee; --muted:#98a2ad; --faint:#6c7681;
+  --accent:#a78bfa; --accent-2:#8b5cf6; --success:#34d399; --slack:#4A154B;
+  --code-bg:#0b0d0f; --radius:14px;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
+  line-height:1.7;-webkit-font-smoothing:antialiased;font-size:16px}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* nav (same look as landing) */
+header.nav{position:sticky;top:0;z-index:50;background:rgba(13,15,17,.82);
+  backdrop-filter:blur(10px);border-bottom:1px solid var(--border-soft)}
+.nav-inner{max-width:1080px;margin:0 auto;padding:0 24px;display:flex;align-items:center;gap:18px;height:58px}
+.brand{display:flex;align-items:center;gap:9px;font-weight:700;letter-spacing:-.01em;color:var(--text)}
+.brand:hover{text-decoration:none}
+.brand .logo{width:28px;height:28px;display:grid;place-items:center;border-radius:8px;
+  background:linear-gradient(135deg,var(--slack),#7a2e6e);font-size:16px}
+.nav-links{margin-left:auto;display:flex;gap:20px;align-items:center;flex-wrap:wrap}
+.nav-links a{color:var(--muted);font-size:.9rem;font-weight:500}
+.nav-links a:hover{color:var(--text);text-decoration:none}
+.nav-links a.active{color:var(--accent)}
+.nav-cta{background:var(--accent);color:#1a1030!important;padding:7px 13px;border-radius:8px;font-weight:600}
+.nav-cta:hover{background:#b9a3ff;text-decoration:none}
+@media(max-width:820px){.nav-links a.hideable{display:none}}
+
+/* article */
+.doc{max-width:820px;margin:0 auto;padding:44px 24px 80px}
+.breadcrumb{font-size:.85rem;color:var(--faint);margin-bottom:8px}
+.breadcrumb a{color:var(--muted)}
+.doc h1{font-size:2.1rem;letter-spacing:-.025em;margin:.2em 0 .6em;line-height:1.15}
+.doc h2{font-size:1.45rem;letter-spacing:-.015em;margin:1.8em 0 .5em;padding-top:.4em;
+  border-top:1px solid var(--border-soft)}
+.doc h3{font-size:1.15rem;margin:1.5em 0 .4em}
+.doc h4{font-size:1rem;margin:1.3em 0 .3em;color:var(--muted)}
+.doc p{margin:.7em 0}
+.doc ul,.doc ol{padding-left:1.4em;margin:.7em 0}
+.doc li{margin:.32em 0}
+.doc li::marker{color:var(--faint)}
+.doc a{font-weight:500}
+.doc strong{color:#fff}
+.doc hr{border:none;border-top:1px solid var(--border-soft);margin:2em 0}
+.doc img{max-width:100%}
+
+/* inline + block code */
+.doc code{font-family:var(--mono);font-size:.86em;background:#20252b;color:#e9d5ff;
+  padding:.12em .42em;border-radius:6px;border:1px solid var(--border-soft)}
+.doc pre{background:var(--code-bg);border:1px solid var(--border);border-radius:12px;
+  padding:16px 18px;overflow-x:auto;margin:1em 0}
+.doc pre code{background:none;border:none;padding:0;color:#cdd6e0;font-size:.86rem;line-height:1.7}
+
+/* blockquote (used for notes/tips) */
+.doc blockquote{margin:1.1em 0;padding:2px 18px;border-left:3px solid var(--accent);
+  background:var(--surface);border-radius:0 8px 8px 0;color:var(--muted)}
+.doc blockquote p{margin:.6em 0}
+
+/* tables */
+.doc table{border-collapse:collapse;width:100%;font-size:.92rem;margin:1.1em 0;
+  border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.doc th,.doc td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--border-soft);vertical-align:top}
+.doc th{background:var(--surface);font-weight:600}
+.doc tr:last-child td{border-bottom:none}
+.doc td code{white-space:nowrap}
+
+/* footer */
+.doc-footer{border-top:1px solid var(--border-soft);padding:26px 24px;color:var(--faint);
+  font-size:.88rem;text-align:center}
+.doc-footer a{color:var(--muted)}

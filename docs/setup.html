@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Setup — research-bot docs</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%94%AC%3C/text%3E%3C/svg%3E" />
+<link rel="stylesheet" href="assets/docs.css" />
+</head>
+<body>
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html"><span class="logo">🔬</span> research-bot</a>
+    <nav class="nav-links"><a class="active" href="setup.html">Setup</a><a class="hideable" href="usage.html">Usage</a><a class="hideable" href="multi-machine.html">Multi-machine</a><a class="hideable" href="architecture.html">Architecture</a><a class="hideable" href="troubleshooting.html">Troubleshooting</a><a class="nav-cta" href="https://github.com/Minyoung1005/research-bot">GitHub ★</a></nav>
+  </div>
+</header>
+<main class="doc">
+  <div class="breadcrumb"><a href="index.html">Docs</a> / Setup</div>
+<h1 id="setup">Setup</h1>
+<p>End-to-end walkthrough from nothing to a working bot. Takes about 10
+minutes.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<p>On every machine that will execute commands:</p>
+<ul>
+<li><strong>Python 3.9+</strong></li>
+<li><strong>tmux</strong> (<code>apt install tmux</code> /
+<code>brew install tmux</code>)</li>
+<li><strong><a href="https://docs.claude.com/en/docs/claude-code">Claude
+Code CLI</a></strong> — installed and logged in (<code>claude</code>
+must work in a fresh shell). The bot looks for it in <code>PATH</code>
+plus <code>~/.local/bin</code>, <code>~/.npm/bin</code>, and conda
+locations.</li>
+<li><em>(optional)</em> <strong><a
+href="https://github.com/openai/codex">Codex CLI</a></strong> — only if
+you want <code>--model codex</code>; authenticated via
+<code>codex login</code> or <code>OPENAI_API_KEY</code>.</li>
+</ul>
+<p>Only the <strong>gateway</strong> machine (the one connected to
+Slack) needs Python and the bot itself. Remote workers just need tmux +
+the agent CLI (<a href="multi-machine.html">details</a>).</p>
+<h2 id="1-create-the-slack-app">1. Create the Slack app</h2>
+<ol type="1">
+<li>Go to <a href="https://api.slack.com/apps">api.slack.com/apps</a> →
+<strong>Create New App</strong> → <strong>From a manifest</strong>.</li>
+<li>Pick your workspace, choose the <strong>YAML</strong> tab, paste the
+manifest below (also in <a
+href="../slack-app-manifest.yaml"><code>slack-app-manifest.yaml</code></a>),
+click <strong>Next</strong> → <strong>Create</strong>.</li>
+</ol>
+<details>
+<summary>📋 <b>slack-app-manifest.yaml</b> — click to expand, then copy-paste</summary>
+
+<pre class="yaml"><code>display_information:
+  name: research-bot
+  description: Drive Claude Code on your own machines from Slack
+  background_color: &quot;#1a1d21&quot;
+features:
+  bot_user:
+    display_name: research-bot
+    always_online: true
+oauth_config:
+  scopes:
+    bot:
+      - app_mentions:read
+      - channels:history
+      - groups:history
+      - im:history
+      - im:read
+      - im:write
+      - mpim:history
+      - chat:write
+      - files:read
+      - files:write
+      - reactions:read
+      - reactions:write
+settings:
+  event_subscriptions:
+    bot_events:
+      - app_mention
+      - message.im
+      - reaction_added
+      - reaction_removed
+  interactivity:
+    is_enabled: false
+  org_deploy_enabled: false
+  socket_mode_enabled: true
+  token_rotation_enabled: false</code></pre>
+</details>
+
+<ol start="3" type="1">
+<li><strong>App-Level Token:</strong> <em>Basic Information → App-Level
+Tokens → Generate Token and Scopes</em> → add scope
+<code>connections:write</code> → generate. Copy the
+<code>xapp-...</code> token — this is <code>SLACK_APP_TOKEN</code>.</li>
+<li><strong>Install:</strong> <em>Install App → Install to
+Workspace</em> → allow.</li>
+<li><strong>Bot token:</strong> <em>OAuth &amp; Permissions</em> → copy
+the <em>Bot User OAuth Token</em> (<code>xoxb-...</code>) — this is
+<code>SLACK_BOT_TOKEN</code>.</li>
+</ol>
+<p>The manifest enables <strong>Socket Mode</strong>, which means the
+bot dials out to Slack over a websocket — you need no public URL, no
+inbound ports, no webserver.</p>
+<blockquote>
+<p><strong>Workspace won't let you install apps?</strong> Custom apps
+created from a manifest are usually allowed even where marketplace apps
+aren't. If your workspace blocks even that, create a free Slack
+workspace for yourself or your lab — it takes two minutes.</p>
+</blockquote>
+<h2 id="2-install-the-bot">2. Install the bot</h2>
+<pre class="bash"><code>git clone https://github.com/Minyoung1005/research-bot.git
+cd research-bot
+pip install -r requirements.txt
+cp .env.example .env</code></pre>
+<p>Edit <code>.env</code> — three values are required:</p>
+<pre class="bash"><code>SLACK_BOT_TOKEN=xoxb-...
+SLACK_APP_TOKEN=xapp-...
+MACHINE_NAME=desktop          # how this machine is addressed: /desktop</code></pre>
+<p>Strongly recommended:</p>
+<pre class="bash"><code>ALLOWED_USERS=U0XXXXXXXXX   # your Slack user ID — otherwise ANYONE in the workspace can run code</code></pre>
+<p>(Find your user ID in Slack: your profile → ⋮ → <em>Copy member
+ID</em>.)</p>
+<p>See the <a href="https://github.com/Minyoung1005/research-bot/blob/main/README.md#configuration-reference">configuration
+reference</a> for everything else.</p>
+<h2 id="3-first-run">3. First run</h2>
+<pre class="bash"><code>python bot.py</code></pre>
+<p>You should see
+<code>Bot started! Machine: desktop | Gateway: True | ...</code>. In
+Slack, invite the bot to a channel (<code>/invite @research-bot</code>)
+and mention it:</p>
+<pre><code>@research-bot hello! what directory are you running in?</code></pre>
+<p>The bot reacts with 👀, posts a <code>⏳ running...</code> note, and
+replies with <code>✅ done!</code> when the agent finishes. DMs work
+without a mention.</p>
+<h2 id="4-run-it-persistently">4. Run it persistently</h2>
+<p>The simple way — tmux:</p>
+<pre class="bash"><code>tmux new-session -d -s bot &quot;cd ~/research-bot &amp;&amp; python bot.py&quot;
+tmux new-session -d -s dashboard &quot;cd ~/research-bot &amp;&amp; python dashboard.py&quot;   # optional</code></pre>
+<p>Or a systemd user service
+(<code>~/.config/systemd/user/research-bot.service</code>):</p>
+<pre class="ini"><code>[Unit]
+Description=research-bot Slack bot
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/research-bot
+ExecStart=/usr/bin/python3 %h/research-bot/bot.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target</code></pre>
+<pre class="bash"><code>systemctl --user enable --now research-bot</code></pre>
+<p>Restarts are safe either way: in-flight runs are journaled in
+<code>active_runs.json</code>, and a new bot instance re-attaches to
+their tmux output and still delivers the results (<a
+href="architecture.html#crash-recovery">how</a>).</p>
+<h2 id="5-updating">5. Updating</h2>
+<pre class="bash"><code>git pull &amp;&amp; pip install -r requirements.txt   # then restart the bot</code></pre>
+<p>Your <code>.env</code>, <code>data/</code>, <code>contexts/</code>,
+and <code>STYLE.md</code> edits are yours; only code changes come
+in.</p>
+</main>
+<footer class="doc-footer">
+  MIT License · © 2026 Minyoung Hwang ·
+  <a href="https://github.com/Minyoung1005/research-bot">GitHub</a> ·
+  <a href="https://github.com/Minyoung1005/research-bot/issues">Issues</a> ·
+  <a href="index.html">Docs home</a>
+</footer>
+</body>
+</html>

@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Usage — research-bot docs</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%94%AC%3C/text%3E%3C/svg%3E" />
+<link rel="stylesheet" href="assets/docs.css" />
+</head>
+<body>
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html"><span class="logo">🔬</span> research-bot</a>
+    <nav class="nav-links"><a class="hideable" href="setup.html">Setup</a><a class="active" href="usage.html">Usage</a><a class="hideable" href="multi-machine.html">Multi-machine</a><a class="hideable" href="architecture.html">Architecture</a><a class="hideable" href="troubleshooting.html">Troubleshooting</a><a class="nav-cta" href="https://github.com/Minyoung1005/research-bot">GitHub ★</a></nav>
+  </div>
+</header>
+<main class="doc">
+  <div class="breadcrumb"><a href="index.html">Docs</a> / Usage</div>
+<h1 id="usage">Usage</h1>
+<h2 id="commands">Commands</h2>
+<p>Mention the bot in a channel, or DM it (no mention needed in
+DMs).</p>
+<table>
+<thead>
+<tr class="header">
+<th>Message</th>
+<th>What happens</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>@research-bot &lt;command&gt;</code></td>
+<td>run on this channel's default machine</td>
+</tr>
+<tr class="even">
+<td><code>@research-bot /server &lt;command&gt;</code></td>
+<td>run on machine <code>server</code> (<a
+href="multi-machine.html">multi-machine</a>)</td>
+</tr>
+<tr class="odd">
+<td><code>@research-bot /all &lt;command&gt;</code></td>
+<td>broadcast to every machine</td>
+</tr>
+<tr class="even">
+<td><code>... --model codex</code></td>
+<td>run with the Codex CLI</td>
+</tr>
+<tr class="odd">
+<td><code>... --model codex/gpt-4o</code></td>
+<td>Codex with a specific model</td>
+</tr>
+<tr class="even">
+<td><code>... --model claude/sonnet</code></td>
+<td>Claude Code with a specific model</td>
+</tr>
+<tr class="odd">
+<td><code>... --effort high</code></td>
+<td>reasoning-effort level for Claude
+(<code>low</code>–<code>max</code>)</td>
+</tr>
+<tr class="even">
+<td><code>... --attachments text</code></td>
+<td>attachment mode for this message
+(<code>full</code>/<code>text</code>/<code>none</code>)</td>
+</tr>
+<tr class="odd">
+<td><code>@research-bot /history &lt;query&gt;</code></td>
+<td>full-text search over persisted history</td>
+</tr>
+<tr class="even">
+<td><code>@research-bot summary</code> (or <code>recap</code>,
+<code>history</code>)</td>
+<td>answer from the channel's recent messages</td>
+</tr>
+<tr class="odd">
+<td><code>@research-bot /idea &lt;text&gt;</code></td>
+<td>file an idea into your vault (needs <code>IDEAS_VAULT</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>The <code>--model</code> and <code>--effort</code> flags can appear
+anywhere in the message; they're stripped before the command reaches the
+agent.</p>
+<h2 id="reactions">Reactions</h2>
+<table>
+<thead>
+<tr class="header">
+<th>Reaction</th>
+<th>On</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>👀</td>
+<td>your message</td>
+<td>added by the bot: acknowledged, running</td>
+</tr>
+<tr class="even">
+<td>👁</td>
+<td>thread root</td>
+<td>added by the bot: this thread is on the dashboard
+(auto-managed)</td>
+</tr>
+<tr class="odd">
+<td>❌</td>
+<td>any message in a thread</td>
+<td>kill every running session in that thread</td>
+</tr>
+<tr class="even">
+<td>👍</td>
+<td>a user message</td>
+<td>re-run that command</td>
+</tr>
+<tr class="odd">
+<td>📁</td>
+<td>thread root</td>
+<td>archive the thread on the dashboard; remove 📁 to revive</td>
+</tr>
+</tbody>
+</table>
+<h2 id="sessions-how-memory-works">Sessions: how memory works</h2>
+<p><strong>One Slack thread = one agent session.</strong> The first
+command in a thread starts a fresh Claude Code session (seeded with the
+channel context and recent thread history); every later command in that
+thread <em>resumes</em> it, so the agent remembers everything it did —
+files it edited, results it computed, what you told it.</p>
+<p>Details worth knowing:</p>
+<ul>
+<li>Sessions are <strong>per machine</strong>: <code>/server</code> and
+<code>/desktop</code> in the same thread hold separate sessions.</li>
+<li><strong>Switching agents resets the sibling</strong>: going Claude →
+Codex (or back) mid-thread starts that agent fresh — they can't share
+internal state. The new agent still gets the thread history in its first
+prompt.</li>
+<li>Session mappings live in <code>thread_claude_sessions.json</code>
+and survive bot restarts.</li>
+<li>Up to <code>MAX_CONCURRENT</code> (default 5) commands can run at
+once per machine — including several in the same thread.</li>
+<li>Each command has a <strong>30-minute limit</strong>. Longer work
+should be launched as a background job (below).</li>
+</ul>
+<h2 id="long-running-jobs">Long-running jobs</h2>
+<p>Ask for anything that takes longer than a few minutes (training,
+evals, data collection) and the agent is instructed to:</p>
+<ol type="1">
+<li>Launch it in a detached tmux session on the machine,</li>
+<li>reply immediately with the session name and how to monitor it,</li>
+<li>chain a <code>notify.py</code> call so <strong>the thread gets
+pinged when the job finishes</strong>, including a log tail.</li>
+</ol>
+<p>You can also use the notifier yourself from any script:</p>
+<pre class="bash"><code>python notify.py &quot;Training done ✅&quot; --log train.log --channel C0XXXXXXXXX --thread 1234567890.123456</code></pre>
+<h2 id="files">Files</h2>
+<ul>
+<li><strong>Slack → machine:</strong> attach files to your message;
+they're saved under <code>uploads/&lt;ts&gt;/</code> and copied to the
+target machine at the same path, and the agent is told where they
+are.</li>
+<li><strong>Machine → Slack:</strong> if the agent's reply mentions
+produced files (<code>.png</code>, <code>.pdf</code>, <code>.csv</code>,
+<code>.mp4</code>, ...), the bot uploads them to the thread
+automatically.</li>
+</ul>
+<h3 id="attachment-modes-token-control">Attachment modes (token
+control)</h3>
+<p>Having the agent read media — images, video, PDFs, archives — costs
+far more tokens than text. The attachment mode caps that:</p>
+<table>
+<thead>
+<tr class="header">
+<th>Mode</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>full</code> <em>(default)</em></td>
+<td>every attachment is downloaded and offered to the agent</td>
+</tr>
+<tr class="even">
+<td><code>text</code></td>
+<td>only text-like files pass (code, logs, configs, csv, ...); media is
+skipped <strong>before download</strong> and you get a 📎 notice listing
+what was skipped; the agent is also told not to open media already on
+disk</td>
+</tr>
+<tr class="odd">
+<td><code>none</code></td>
+<td>attachments are ignored entirely</td>
+</tr>
+</tbody>
+</table>
+<p>Set the default with <code>ATTACHMENT_MODE=text</code> in
+<code>.env</code>, and override per message with
+<code>--attachments full</code> when you really do want the agent to
+look at a screenshot.</p>
+<h2 id="history-search">History search</h2>
+<p>Every exchange is persisted to a SQLite database with an FTS5
+full-text index (survives restarts, unlike the in-prompt thread
+memory):</p>
+<pre><code>@research-bot /history dataloader deadlock</code></pre>
+<p>returns matching snippets from the current channel with their thread
+timestamps. Standard FTS5 query syntax works
+(<code>"exact phrase"</code>, <code>term1 AND term2</code>).</p>
+<h2 id="watching-a-run-live">Watching a run live</h2>
+<pre class="bash"><code>python watch_claude.py                     # all active sessions, auto-split tmux panes
+python watch_claude.py /tmp/claude_out_claude-XXXX.txt   # one specific run</code></pre>
+<p>Every run also happens inside a real tmux session
+(<code>tmux ls</code>, then <code>tmux attach -t claude-...</code>) if
+you want the raw view.</p>
+<h2 id="terminal-mode-channel--fast-temporary-sessions">Terminal mode:
+<code>/channel</code> — fast, temporary sessions</h2>
+<p>The Slack round-trip is great from your phone, but when you're
+<strong>at the machine</strong>, talking to Claude Code directly is
+faster — and sometimes you want a throwaway conversation that
+<em>doesn't</em> fill the channel with messages. The bundled
+<code>/channel</code> command gives you both, without losing the
+channel's accumulated context:</p>
+<pre class="bash"><code>cd research-bot
+claude
+&gt; /channel my-project</code></pre>
+<p><code>/channel &lt;name&gt;</code> loads that channel's context file
+— the same memory the Slack bot maintains after every command — into
+your live terminal session and recaps where the work stands. Then you
+brainstorm at full interactive speed. Nothing is posted to Slack and
+nothing is written to the bot's history: the session is temporary by
+design.</p>
+<p>When the conversation produced something worth keeping:</p>
+<pre><code>&gt; /slack my-project</code></pre>
+<p>posts a tidy summary (decisions, open questions, next steps) as a
+top-level message in the channel, so the team — and the bot's channel
+context on its next update — picks up where you left off. If it was
+truly throwaway, just exit and nothing ever happened.</p>
+<p>Setup: map friendly names to channel IDs in <code>.env</code>, e.g.
+<code>CHANNEL_NAMES=my-project:C0AAAAAAAAA,lab-general:C0BBBBBBBBB</code>
+(<code>python chat_to_slack.py --list</code> shows them). The commands
+live in <code>.claude/commands/</code>, so they're available whenever
+you run <code>claude</code> from the repo directory; to use them from
+anywhere, copy them to <code>~/.claude/commands/</code> and make the
+<code>chat_to_slack.py</code> paths absolute.</p>
+<h2 id="customizing">Customizing</h2>
+<ul>
+<li><strong>Dashboard chat</strong> — click any card to open it as a
+chat: conversation history with a message box at the bottom. Sends are
+posted into the Slack thread by the bot and run normally, and the reply
+lands in both places. Localhost-only (it's code execution) — tunnel with
+<code>ssh -L</code> from elsewhere.</li>
+<li><strong>Settings GUI</strong> — with the dashboard running, open
+<code>http://localhost:8080/settings</code> (⚙ in the dashboard header)
+to edit everything below from the browser: <code>.env</code> values
+(secret values are masked; <code>.env</code> changes need a bot
+restart), <code>STYLE.md</code>, and recipes (both live-applied). The
+page refuses non-localhost requests — from another machine, tunnel with
+<code>ssh -L 8080:localhost:8080 &lt;machine&gt;</code>.</li>
+<li><strong><a href="../STYLE.md"><code>STYLE.md</code></a></strong> —
+writing rules injected into every prompt: banned-word table, tone rules.
+Re-read on every command, so edits apply immediately.</li>
+<li><strong><a href="../recipes/"><code>recipes/</code></a></strong> —
+task playbooks. Each <code>.md</code> file's title + first line go into
+a one-line index in the prompt; the agent reads the full file before
+doing a matching task. Starters cover plotting, monitoring, and Slurm —
+add your own (<code>deploy.md</code>, <code>dataset_checks.md</code>,
+your cluster's quirks). Like STYLE.md, changes apply on the next
+command.</li>
+<li><strong><code>LANG_INSTRUCTION</code></strong> (top of
+<code>bot.py</code>) — the standing instruction every agent run
+receives: language policy, commit-after-changes, the long-job protocol.
+Edit to taste.</li>
+<li><strong><code>MODELS</code></strong> registry (top of
+<code>bot.py</code>) — maps <code>--model</code> prefixes to runners. <a
+href="architecture.html#adding-a-new-agent-cli">Add a new agent CLI</a> in
+~20 lines.</li>
+</ul>
+</main>
+<footer class="doc-footer">
+  MIT License · © 2026 Minyoung Hwang ·
+  <a href="https://github.com/Minyoung1005/research-bot">GitHub</a> ·
+  <a href="https://github.com/Minyoung1005/research-bot/issues">Issues</a> ·
+  <a href="index.html">Docs home</a>
+</footer>
+</body>
+</html>
