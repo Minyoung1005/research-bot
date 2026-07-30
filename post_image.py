@@ -36,9 +36,11 @@ def upload(path, channel, thread=None, title=None):
         return False
     upload_url, file_id = r["upload_url"], r["file_id"]
 
-    # 2) upload the raw bytes
+    # 2) upload the RAW bytes (NOT requests multipart files={...}: multipart makes
+    #    Slack store an empty filetype/mimetype with no thumbnail -> invisible)
     with open(path, "rb") as f:
-        pr = requests.post(upload_url, files={"file": (fname, f)}, timeout=120)
+        pr = requests.post(upload_url, data=f.read(),
+                           headers={"Content-Type": "application/octet-stream"}, timeout=120)
     if pr.status_code != 200:
         print(f"[post_image] byte upload failed: HTTP {pr.status_code}")
         return False
