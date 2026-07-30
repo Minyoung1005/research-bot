@@ -55,9 +55,30 @@ def upload(path, channel, thread=None, title=None):
     ).json()
     if c.get("ok"):
         print(f"[post_image] uploaded {fname}")
-        return True
+        return file_id
     print(f"[post_image] completeUploadExternal error: {c.get('error')}")
-    return False
+    return None
+
+
+def post_image_blocks(file_ids_titles, channel, thread=None):
+    """On Enterprise Grid, bot files uploaded via the external-upload flow are
+    shared to the channel but do NOT render inline for other members. Re-post
+    them as `image` blocks referencing each file by id (slack_file) — those DO
+    render for everyone. (files.sharedPublicURL needs a user token: bot tokens
+    get not_allowed_token_type.)"""
+    blocks = []
+    for fid, title in file_ids_titles:
+        blocks.append({"type": "image", "slack_file": {"id": fid},
+                       "alt_text": title, "title": {"type": "plain_text", "text": title[:2000]}})
+    if not blocks:
+        return
+    payload = {"channel": channel, "blocks": blocks, "text": "figures"}
+    if thread:
+        payload["thread_ts"] = thread
+    c = requests.post("https://slack.com/api/chat.postMessage",
+                      headers={"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"},
+                      json=payload, timeout=15).json()
+    print("[post_image] inline image blocks: " + ("ok" if c.get("ok") else f"error {c.get('error')}"))
 
 
 if __name__ == "__main__":
@@ -72,12 +93,24 @@ if __name__ == "__main__":
         print("[post_image] no SLACK_BOT_TOKEN in .env; skipping")
         sys.exit(0)
 
+    img_ids = []  # (file_id, title) for inline image-block re-post
+    IMG_EXT = (".png", ".jpg", ".jpeg", ".gif", ".webp")
     for p in args.files:
         if os.path.exists(p):
             try:
-                upload(p, args.channel, args.thread, args.title)
+                fid = upload(p, args.channel, args.thread, args.title)
+                if fid and p.lower().endswith(IMG_EXT):
+                    img_ids.append((fid, args.title or os.path.basename(p)))
             except Exception as e:
                 print(f"[post_image] {p} skipped: {str(e)[:120]}")
         else:
             print(f"[post_image] missing file: {p}")
+
+    # Enterprise-Grid render fix: bot external-upload files don't preview inline
+    # for other members; re-post images as image blocks referencing them by id.
+    if img_ids:
+        try:
+            post_image_blocks(img_ids, args.channel, args.thread)
+        except Exception as e:
+            print(f"[post_image] image-block re-post skipped: {str(e)[:120]}")
     sys.exit(0)  # never hard-fail a background job
