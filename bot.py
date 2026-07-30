@@ -128,6 +128,7 @@ ALIVE_REACTION       = os.environ.get("ALIVE_REACTION", "eye")
 # legacy party-blob if one is present — Slack only lets you delete your own reactions.
 ARCHIVE_REACTION     = os.environ.get("ARCHIVE_REACTION", "file_folder")
 CLAUDE_MODEL         = os.environ.get("CLAUDE_MODEL", "")  # empty = claude CLI's default model
+CLAUDE_EFFORT        = os.environ.get("CLAUDE_EFFORT", "")  # default reasoning effort; per-msg --effort overrides
 CODEX_MODEL          = os.environ.get("CODEX_MODEL", "gpt-4.1")
 DEFAULT_OPENAI_MODEL = os.environ.get("DEFAULT_OPENAI_MODEL", CODEX_MODEL)
 
@@ -837,7 +838,8 @@ def run_in_tmux(full_prompt, say, thread_ts, original_command, channel_id,
             session_arg = ""
         effective_claude_model = model_override or CLAUDE_MODEL
         model_arg  = f"--model {effective_claude_model}" if effective_claude_model else ""
-        effort_arg = f"--effort {effort_override}" if effort_override else ""
+        _effort = effort_override or CLAUDE_EFFORT
+        effort_arg = f"--effort {_effort}" if _effort else ""
         cmd = (
             f"{env_prefix} && "
             f"claude {session_arg} {model_arg} {effort_arg} --output-format stream-json --verbose --dangerously-skip-permissions --disallowedTools ScheduleWakeup "
@@ -1225,7 +1227,8 @@ def run_on_remote_tmux(target_machine, full_prompt, say, thread_ts, original_com
             session_arg = ""
         effective_claude_model = model_override or CLAUDE_MODEL
         model_arg  = f"--model {effective_claude_model}" if effective_claude_model else ""
-        effort_arg = f"--effort {effort_override}" if effort_override else ""
+        _effort = effort_override or CLAUDE_EFFORT
+        effort_arg = f"--effort {_effort}" if _effort else ""
         cmd = (
             f"{env_prefix} && "
             f"claude {session_arg} {model_arg} {effort_arg} --output-format stream-json --verbose --dangerously-skip-permissions --disallowedTools ScheduleWakeup "
