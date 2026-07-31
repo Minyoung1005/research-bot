@@ -129,6 +129,10 @@ ALIVE_REACTION       = os.environ.get("ALIVE_REACTION", "eye")
 ARCHIVE_REACTION     = os.environ.get("ARCHIVE_REACTION", "file_folder")
 CLAUDE_MODEL         = os.environ.get("CLAUDE_MODEL", "")  # empty = claude CLI's default model
 CLAUDE_EFFORT        = os.environ.get("CLAUDE_EFFORT", "")  # default reasoning effort; per-msg --effort overrides
+# Permission flags for headless claude runs. "--permission-mode auto" works everywhere
+# (LLM classifier auto-approves safe actions); "--dangerously-skip-permissions" is
+# silently downgraded when org policy or the model's safety measures disallow bypass.
+CLAUDE_PERMISSION_ARGS = os.environ.get("CLAUDE_PERMISSION_ARGS", "--permission-mode auto")
 CODEX_MODEL          = os.environ.get("CODEX_MODEL", "gpt-4.1")
 DEFAULT_OPENAI_MODEL = os.environ.get("DEFAULT_OPENAI_MODEL", CODEX_MODEL)
 
@@ -375,7 +379,7 @@ def update_context(command, output, channel_id):
         env = os.environ.copy()
         env["HOME"] = os.path.expanduser("~")
         result = subprocess.run(
-            ["claude", "-p", prompt, "--dangerously-skip-permissions"],
+            ["claude", "-p", prompt] + CLAUDE_PERMISSION_ARGS.split(),
             capture_output=True, text=True, cwd=WORK_DIR, timeout=60, env=env
         )
         if result.stdout:
@@ -846,7 +850,7 @@ def run_in_tmux(full_prompt, say, thread_ts, original_command, channel_id,
         effort_arg = f"--effort {_effort}" if _effort else ""
         cmd = (
             f"{env_prefix} && "
-            f"claude {session_arg} {model_arg} {effort_arg} --output-format stream-json --verbose --dangerously-skip-permissions --disallowedTools ScheduleWakeup "
+            f"claude {session_arg} {model_arg} {effort_arg} --output-format stream-json --verbose {CLAUDE_PERMISSION_ARGS} --disallowedTools ScheduleWakeup "
             f"< {prompt_file} > {output_file} 2>&1 ; "
             f"echo {TMUX_DONE_MARKER} >> {output_file}"
         )
@@ -1235,7 +1239,7 @@ def run_on_remote_tmux(target_machine, full_prompt, say, thread_ts, original_com
         effort_arg = f"--effort {_effort}" if _effort else ""
         cmd = (
             f"{env_prefix} && "
-            f"claude {session_arg} {model_arg} {effort_arg} --output-format stream-json --verbose --dangerously-skip-permissions --disallowedTools ScheduleWakeup "
+            f"claude {session_arg} {model_arg} {effort_arg} --output-format stream-json --verbose {CLAUDE_PERMISSION_ARGS} --disallowedTools ScheduleWakeup "
             f"< {prompt_file} > {output_file} 2>&1 ; "
             f"echo {TMUX_DONE_MARKER} >> {output_file}"
         )

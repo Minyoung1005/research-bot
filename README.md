@@ -206,6 +206,7 @@ That's it — `/server` and `/cluster` become routable, the machine list is deri
 | `ATTACHMENT_MODE` | | `full` | `full` / `text` / `none` — which attachments reach the agent |
 | `CLAUDE_MODEL` | | CLI default | default Claude model |
 | `CLAUDE_EFFORT` | | — | default reasoning effort (`low`–`max`); per-message `--effort` overrides |
+| `CLAUDE_PERMISSION_ARGS` | | `--permission-mode auto` | permission flags for headless runs (`--dangerously-skip-permissions` where bypass is allowed) |
 | `CODEX_MODEL` | | `gpt-4.1` | default Codex model |
 | `IDEAS_VAULT` | | *(disabled)* | path to an Obsidian-style vault for `/idea` |
 | `SLACK_WEBHOOK_URL` | | — | fallback webhook for `notify.py` |
