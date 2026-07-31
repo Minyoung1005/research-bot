@@ -284,6 +284,10 @@ def clear_claude_session_uuid(channel_id, thread_ts, machine=None):
 # thread_claude_sessions.json (alongside the real machine key for Claude), so
 # Codex gets the same per-thread resume behavior as Claude without a new file.
 CODEX_SESSION_KEY = "codex"
+# Pseudo-machine key under which a thread's "sticky" --model string is stored,
+# so later messages reuse the model chosen earlier in the thread without retyping
+# --model. Any explicit --model updates it.
+MODEL_STICKY_KEY = "__model__"
 
 
 def extract_codex_session_id(raw):
@@ -1379,6 +1383,12 @@ def parse_and_run(text, say, thread_ts, channel_id, user_id,
     effort_str, text = parse_effort_flag(text)
     att_mode, text = parse_attachments_flag(text)
     att_mode = att_mode or ATTACHMENT_MODE
+    # Sticky model per thread: an explicit --model sets the thread's model; later
+    # messages with no --model reuse it, so you don't retype --model every turn.
+    if model_str:
+        set_claude_session_uuid(channel_id, thread_ts, MODEL_STICKY_KEY, model_str)
+    else:
+        model_str = get_claude_session_uuid(channel_id, thread_ts, MODEL_STICKY_KEY)
     runner, effective_model = resolve_model(model_str)   # "codex" or "claude"
 
     attached_files, skipped_files = extract_files_from_event(event, att_mode) if event else ([], [])

@@ -51,11 +51,11 @@ Every command runs on **Claude Code** by default. To run one on **Codex** instea
 
 Pin a specific model with `--model codex/<model>` (e.g. `--model codex/gpt-5.6-sol`) or `--model claude/<model>` (e.g. `--model claude/sonnet`). Set the defaults with `CODEX_MODEL` / `CLAUDE_MODEL` in `.env`.
 
-- **The choice is per message, not sticky.** The runner is read from the `--model` flag on each message; omit it and the message goes back to Claude. To keep a thread on Codex, add `--model codex` to every message in it.
-- **Each agent keeps its own session in the thread.** Codex remembers its earlier turns (and Claude remembers its own), so within a thread each stays coherent as long as you keep addressing it. Switching Claude ↔ Codex mid-thread resets the *other* agent's session — but the thread history is re-injected, so nothing is lost.
+- **The model sticks to the thread.** The first `--model` you use in a thread becomes that thread's agent; every later message reuses it automatically — you don't retype `--model`. Add `--model <other>` on any message to switch, and that new choice sticks going forward. (A thread where you never pass `--model` stays on the default Claude model.)
+- **Each agent keeps its own session in the thread.** Codex remembers its earlier turns (and Claude remembers its own), so within a thread each stays coherent. Switching Claude ↔ Codex mid-thread resets the *other* agent's session — but the thread history is re-injected, so nothing is lost.
 - **History and channel memory are shared across both.** Both runners write to the same `data/history.db` (so `/history` search spans both) and update the same per-channel context. A Codex job and a Claude job in the same channel build one shared memory.
 
-**Tip:** because switching resets the sibling session, it's cleanest to run Codex jobs in their **own threads** rather than flip-flopping within one — you keep a clean Codex session while Claude handles the rest, and both still feed the shared history and context.
+**Tip:** set the agent once at the start of a thread and it stays put. Because switching still resets the sibling session, it's cleanest to give Codex its own threads rather than flip-flopping within one.
 
 ## Long-running jobs
 
