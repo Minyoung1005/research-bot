@@ -12,6 +12,7 @@ be appended to a background job without ever failing it.
 
 import os
 import sys
+import time
 import argparse
 import requests
 from dotenv import load_dotenv
@@ -77,9 +78,17 @@ def post_image_blocks(file_ids_titles, channel, thread=None):
     payload = {"channel": channel, "blocks": blocks, "text": "figures"}
     if thread:
         payload["thread_ts"] = thread
-    c = requests.post("https://slack.com/api/chat.postMessage",
-                      headers={"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"},
-                      json=payload, timeout=15).json()
+    # Right after completeUploadExternal, Slack is still processing the file
+    # (empty mimetype/filetype); an image block referencing it by id fails
+    # `invalid_blocks` until processing finishes. Retry with backoff.
+    c = {}
+    for attempt in range(6):
+        c = requests.post("https://slack.com/api/chat.postMessage",
+                          headers={"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"},
+                          json=payload, timeout=15).json()
+        if c.get("ok") or c.get("error") != "invalid_blocks":
+            break
+        time.sleep(2)
     print("[post_image] inline image blocks: " + ("ok" if c.get("ok") else f"error {c.get('error')}"))
 
 
