@@ -97,22 +97,16 @@ agent.</p>
 <td>added by the bot: acknowledged, running</td>
 </tr>
 <tr class="even">
-<td>👁</td>
-<td>thread root</td>
-<td>added by the bot: this thread is on the dashboard
-(auto-managed)</td>
-</tr>
-<tr class="odd">
 <td>❌</td>
 <td>any message in a thread</td>
 <td>kill every running session in that thread</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td>👍</td>
 <td>a user message</td>
 <td>re-run that command</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td>📁</td>
 <td>thread root</td>
 <td>archive the thread on the dashboard; remove 📁 to revive</td>
@@ -140,6 +134,40 @@ once per machine — including several in the same thread.</li>
 <li>Each command has a <strong>30-minute limit</strong>. Longer work
 should be launched as a background job (below).</li>
 </ul>
+<h2 id="choosing-the-agent-claude-vs-codex">Choosing the agent: Claude
+vs Codex</h2>
+<p>Every command runs on <strong>Claude Code</strong> by default. To run
+one on <strong>Codex</strong> instead, put <code>--model codex</code>
+anywhere in the message:</p>
+<pre><code>@research-bot profile this training loop --model codex</code></pre>
+<p>Pin a specific model with <code>--model codex/&lt;model&gt;</code>
+(e.g. <code>--model codex/gpt-5.6-sol</code>) or
+<code>--model claude/&lt;model&gt;</code> (e.g.
+<code>--model claude/sonnet</code>). Set the defaults with
+<code>CODEX_MODEL</code> / <code>CLAUDE_MODEL</code> in
+<code>.env</code>.</p>
+<ul>
+<li><strong>The choice is per message, not sticky.</strong> The runner
+is read from the <code>--model</code> flag on each message; omit it and
+the message goes back to Claude. To keep a thread on Codex, add
+<code>--model codex</code> to every message in it.</li>
+<li><strong>Each agent keeps its own session in the thread.</strong>
+Codex remembers its earlier turns (and Claude remembers its own), so
+within a thread each stays coherent as long as you keep addressing it.
+Switching Claude ↔︎ Codex mid-thread resets the <em>other</em> agent's
+session — but the thread history is re-injected, so nothing is
+lost.</li>
+<li><strong>History and channel memory are shared across both.</strong>
+Both runners write to the same <code>data/history.db</code> (so
+<code>/history</code> search spans both) and update the same per-channel
+context. A Codex job and a Claude job in the same channel build one
+shared memory.</li>
+</ul>
+<p><strong>Tip:</strong> because switching resets the sibling session,
+it's cleanest to run Codex jobs in their <strong>own threads</strong>
+rather than flip-flopping within one — you keep a clean Codex session
+while Claude handles the rest, and both still feed the shared history
+and context.</p>
 <h2 id="long-running-jobs">Long-running jobs</h2>
 <p>Ask for anything that takes longer than a few minutes (training,
 evals, data collection) and the agent is instructed to:</p>

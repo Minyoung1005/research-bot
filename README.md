@@ -74,7 +74,6 @@ One machine runs `bot.py` as the **gateway** (receives Slack events over Socket 
 | Reaction | On | Effect |
 |----------|----|--------|
 | 👀 | your message | added by the bot: command acknowledged, running |
-| 👁 | thread root | added by the bot: this thread is on the dashboard (auto-managed) |
 | ❌ | any message in a thread | kill every running session in that thread |
 | 👍 | a user message | re-run that command |
 | 📁 | thread root | archive the thread (dashboard hides it; remove 📁 to revive) |
@@ -206,6 +205,7 @@ That's it — `/server` and `/cluster` become routable, the machine list is deri
 | `CONTEXT_GIT_SYNC` | | `true` | auto-commit/push channel contexts to origin (multi-machine sync) |
 | `ATTACHMENT_MODE` | | `full` | `full` / `text` / `none` — which attachments reach the agent |
 | `CLAUDE_MODEL` | | CLI default | default Claude model |
+| `CLAUDE_EFFORT` | | — | default reasoning effort (`low`–`max`); per-message `--effort` overrides |
 | `CODEX_MODEL` | | `gpt-4.1` | default Codex model |
 | `IDEAS_VAULT` | | *(disabled)* | path to an Obsidian-style vault for `/idea` |
 | `SLACK_WEBHOOK_URL` | | — | fallback webhook for `notify.py` |

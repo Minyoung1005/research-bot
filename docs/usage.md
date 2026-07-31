@@ -25,7 +25,6 @@ The `--model` and `--effort` flags can appear anywhere in the message; they're s
 | Reaction | On | Effect |
 |----------|----|--------|
 | 👀 | your message | added by the bot: acknowledged, running |
-| 👁 | thread root | added by the bot: this thread is on the dashboard (auto-managed) |
 | ❌ | any message in a thread | kill every running session in that thread |
 | 👍 | a user message | re-run that command |
 | 📁 | thread root | archive the thread on the dashboard; remove 📁 to revive |
@@ -41,6 +40,22 @@ Details worth knowing:
 - Session mappings live in `thread_claude_sessions.json` and survive bot restarts.
 - Up to `MAX_CONCURRENT` (default 5) commands can run at once per machine — including several in the same thread.
 - Each command has a **30-minute limit**. Longer work should be launched as a background job (below).
+
+## Choosing the agent: Claude vs Codex
+
+Every command runs on **Claude Code** by default. To run one on **Codex** instead, put `--model codex` anywhere in the message:
+
+```
+@research-bot profile this training loop --model codex
+```
+
+Pin a specific model with `--model codex/<model>` (e.g. `--model codex/gpt-5.6-sol`) or `--model claude/<model>` (e.g. `--model claude/sonnet`). Set the defaults with `CODEX_MODEL` / `CLAUDE_MODEL` in `.env`.
+
+- **The choice is per message, not sticky.** The runner is read from the `--model` flag on each message; omit it and the message goes back to Claude. To keep a thread on Codex, add `--model codex` to every message in it.
+- **Each agent keeps its own session in the thread.** Codex remembers its earlier turns (and Claude remembers its own), so within a thread each stays coherent as long as you keep addressing it. Switching Claude ↔ Codex mid-thread resets the *other* agent's session — but the thread history is re-injected, so nothing is lost.
+- **History and channel memory are shared across both.** Both runners write to the same `data/history.db` (so `/history` search spans both) and update the same per-channel context. A Codex job and a Claude job in the same channel build one shared memory.
+
+**Tip:** because switching resets the sibling session, it's cleanest to run Codex jobs in their **own threads** rather than flip-flopping within one — you keep a clean Codex session while Claude handles the rest, and both still feed the shared history and context.
 
 ## Long-running jobs
 
