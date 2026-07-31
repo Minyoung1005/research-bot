@@ -20,6 +20,7 @@ contexts/*
 
 # personal / internal briefing — never publish
 CLAUDE.md
+context.md
 
 # personal scratch space: put anything private here, it's never committed
 local/*
