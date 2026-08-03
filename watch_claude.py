@@ -125,11 +125,15 @@ def stream_file(filepath, pane_id, label):
                             return
                         try:
                             obj = json.loads(line)
+                        except json.JSONDecodeError:
+                            obj = None
+                        if isinstance(obj, dict):
                             text = format_event(obj, label)
                             if text:
                                 send_to_pane(pane_id, text + "\n")
-                        except json.JSONDecodeError:
-                            # Non-JSON line (e.g. Codex CLI plain-text output) — show as-is
+                        else:
+                            # Non-JSON line, or a bare JSON scalar inside a plain-text
+                            # transcript (Codex CLI output) — show as-is.
                             send_to_pane(pane_id, line + "\n")
 
             time.sleep(POLL_INTERVAL)
@@ -276,11 +280,16 @@ def watch_single_file(filepath):
                                 print(f"\n\033[32m[done]\033[0m\n")
                             continue
                         try:
-                            text = format_event(json.loads(line), label)
+                            obj = json.loads(line)
+                        except json.JSONDecodeError:
+                            obj = None
+                        if isinstance(obj, dict):
+                            text = format_event(obj, label)
                             if text:
                                 print(text, flush=True)
-                        except json.JSONDecodeError:
-                            # Non-JSON line (e.g. Codex CLI plain-text output) — print as-is
+                        else:
+                            # Non-JSON line, or a bare JSON scalar inside a plain-text
+                            # transcript (Codex CLI output) — print as-is.
                             print(line, flush=True)
             time.sleep(POLL_INTERVAL)
         except KeyboardInterrupt:
