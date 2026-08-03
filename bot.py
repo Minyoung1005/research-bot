@@ -119,6 +119,30 @@ IDEA_INSTRUCTION = (
 SESSION_MAX_TURNS    = 6
 THREAD_HISTORY_LIMIT = 10
 TMUX_DONE_MARKER     = "___CLAUDE_DONE___"
+# Max Slack messages per delivery; longer output is attached as a file instead.
+MAX_SLACK_CHUNKS     = int(os.environ.get("MAX_SLACK_CHUNKS", "8"))
+
+
+def done_marker(session_id):
+    """Per-session completion marker. The session-id suffix makes the marker
+    unreproducible from elsewhere: an agent that greps/cats bot code or other
+    runs' output files (which all contain the plain marker) can no longer echo
+    THIS run's marker mid-stream and trigger a premature delivery."""
+    return f"{TMUX_DONE_MARKER}{session_id}"
+
+
+def is_done(content, session_id, accept_legacy=False):
+    """Complete only when the run's own marker is the LAST thing in the output —
+    the runner appends it after the CLI exits, so mid-stream matches don't count.
+    accept_legacy also accepts the plain marker (runs started by an older bot)."""
+    tail = content.rstrip()
+    if tail.endswith(done_marker(session_id)):
+        return True
+    return accept_legacy and tail.endswith(TMUX_DONE_MARKER)
+
+
+def strip_done_marker(content, session_id):
+    return content.replace(done_marker(session_id), "").replace(TMUX_DONE_MARKER, "").strip()
 MAX_CONCURRENT       = int(os.environ.get("MAX_CONCURRENT", "5"))
 # "On the dashboard" indicator the bot adds to a thread's ROOT message and removes
 # on archive/end. 👁 (:eye:) by default — deliberately distinct from the per-message
@@ -769,6 +793,23 @@ def _send_output(output, target_machine, say, thread_ts, original_command, chann
 
     CHUNK_SIZE = 2800
     chunks = [output[i:i+CHUNK_SIZE] for i in range(0, len(output), CHUNK_SIZE)]
+    # Cap the message count: runaway output (e.g. a raw agent transcript) becomes
+    # one message + a file attachment instead of hundreds of chunks.
+    if len(chunks) > MAX_SLACK_CHUNKS:
+        full_path = f"/tmp/full_output_{int(time.time())}.txt"
+        try:
+            with open(full_path, "w") as f:
+                f.write(output)
+        except Exception:
+            full_path = None
+        attached = full_path and client and event_channel
+        _slack_send_retry(say, text=f"✅ `{target_machine}` done!\n{chunks[0]}", thread_ts=thread_ts)
+        note = (f"⚠️ Output was very long ({len(chunks)} chunks) — sent the first chunk only"
+                + ("; full output attached." if attached else f"; full output in `{full_path}`." if full_path else "."))
+        _slack_send_retry(say, text=note, thread_ts=thread_ts)
+        if attached:
+            upload_files_to_slack(client, event_channel, thread_ts, [full_path])
+        chunks = []
     for i, chunk in enumerate(chunks):
         header = f"✅ `{target_machine}` done!" if i == 0 else f"📄 `{target_machine}` (cont. {i+1}/{len(chunks)})"
         _slack_send_retry(say, text=f"{header}\n{chunk}", thread_ts=thread_ts)
@@ -852,7 +893,7 @@ def run_in_tmux(full_prompt, say, thread_ts, original_command, channel_id,
             f"{env_prefix} && "
             f"claude {session_arg} {model_arg} {effort_arg} --output-format stream-json --verbose {CLAUDE_PERMISSION_ARGS} --disallowedTools ScheduleWakeup "
             f"< {prompt_file} > {output_file} 2>&1 ; "
-            f"echo {TMUX_DONE_MARKER} >> {output_file}"
+            f"echo {done_marker(session_id)} >> {output_file}"
         )
         result = subprocess.run(["tmux", "send-keys", "-t", session_id, cmd, "Enter"])
         if result.returncode != 0:
@@ -880,12 +921,12 @@ def run_in_tmux(full_prompt, say, thread_ts, original_command, channel_id,
             try:
                 with open(output_file, "r") as f:
                     content = f.read()
-                if TMUX_DONE_MARKER in content:
+                if is_done(content, session_id):
                     if _consume_cancel(session_id, say, thread_ts):
                         if client and event_channel and event_ts:
                             ack_reaction(client, event_channel, event_ts, add=False)
                         return
-                    output = content.replace(TMUX_DONE_MARKER, "").strip()
+                    output = strip_done_marker(content, session_id)
                     with open(watch_file, "w") as wf:
                         wf.write(content)
                     os.remove(output_file)
@@ -986,7 +1027,7 @@ def run_codex(full_prompt, say, thread_ts, original_command, channel_id,
             f"{env_prefix} && "
             f"{codex_invocation} "
             f"< {prompt_file} > {output_file} 2>&1 ; "
-            f"echo {TMUX_DONE_MARKER} >> {output_file}"
+            f"echo {done_marker(session_id)} >> {output_file}"
         )
         result = subprocess.run(["tmux", "send-keys", "-t", session_id, cmd, "Enter"])
         if result.returncode != 0:
@@ -1015,7 +1056,7 @@ def run_codex(full_prompt, say, thread_ts, original_command, channel_id,
                     content = f.read()
             except FileNotFoundError:
                 continue
-            if TMUX_DONE_MARKER not in content:
+            if not is_done(content, session_id):
                 continue
             if _consume_cancel(session_id, say, thread_ts):
                 if client and event_channel and event_ts:
@@ -1031,7 +1072,10 @@ def run_codex(full_prompt, say, thread_ts, original_command, channel_id,
             except FileNotFoundError:
                 pass
             if not output:
-                output = content.replace(TMUX_DONE_MARKER, "").strip()
+                # No clean final-message file — deliver only the transcript tail
+                # (the full transcript stays in the watch file), never the whole
+                # raw agentic stream.
+                output = strip_done_marker(content, session_id)[-5600:]
             # Capture the Codex session UUID so the next turn in this thread can resume it.
             new_sid = extract_codex_session_id(content)
             if new_sid:
@@ -1241,7 +1285,7 @@ def run_on_remote_tmux(target_machine, full_prompt, say, thread_ts, original_com
             f"{env_prefix} && "
             f"claude {session_arg} {model_arg} {effort_arg} --output-format stream-json --verbose {CLAUDE_PERMISSION_ARGS} --disallowedTools ScheduleWakeup "
             f"< {prompt_file} > {output_file} 2>&1 ; "
-            f"echo {TMUX_DONE_MARKER} >> {output_file}"
+            f"echo {done_marker(session_id)} >> {output_file}"
         )
         subprocess.run(
             ssh_cmd(target_machine, f"tmux send-keys -t {session_id} '{cmd}' Enter"),
@@ -1262,8 +1306,8 @@ def run_on_remote_tmux(target_machine, full_prompt, say, thread_ts, original_com
                 capture_output=True, text=True, timeout=10
             )
             content = result.stdout
-            if TMUX_DONE_MARKER in content:
-                output = content.replace(TMUX_DONE_MARKER, "").strip()
+            if is_done(content, session_id):
+                output = strip_done_marker(content, session_id)
                 subprocess.run(
                     ssh_cmd(target_machine, f"cp {output_file} /tmp/claude_watch_{session_id}.txt && rm -f {output_file} && tmux kill-session -t {session_id} 2>/dev/null"),
                     timeout=5
@@ -1628,7 +1672,7 @@ def _resume_run(session_id, info):
         except FileNotFoundError:
             content = ""
 
-        if TMUX_DONE_MARKER in content:
+        if is_done(content, session_id, accept_legacy=True):
             if _consume_cancel(session_id, say, thread_ts):
                 unrecord_run(session_id)
                 return
@@ -1645,11 +1689,11 @@ def _resume_run(session_id, info):
                 except Exception:
                     pass
                 if not output:
-                    output = content.replace(TMUX_DONE_MARKER, "").strip()
+                    output = strip_done_marker(content, session_id)[-5600:]
                 _send_output(output, label, say, thread_ts, info["original_command"], channel_id,
                              client=app.client, event_ts=event_ts, event_channel=event_channel)
             else:
-                output = content.replace(TMUX_DONE_MARKER, "").strip()
+                output = strip_done_marker(content, session_id)
                 deliver_output(output, label, say, thread_ts, info["original_command"], channel_id,
                                client=app.client, event_ts=event_ts, event_channel=event_channel)
             try:
