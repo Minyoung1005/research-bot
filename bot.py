@@ -119,7 +119,7 @@ IDEA_INSTRUCTION = (
 SESSION_MAX_TURNS    = 6
 THREAD_HISTORY_LIMIT = 10
 TMUX_DONE_MARKER     = "___CLAUDE_DONE___"
-MAX_CONCURRENT       = 5
+MAX_CONCURRENT       = int(os.environ.get("MAX_CONCURRENT", "5"))
 # "On the dashboard" indicator the bot adds to a thread's ROOT message and removes
 # on archive/end. 👁 (:eye:) by default — deliberately distinct from the per-message
 # 👀 ack. Bot-owned: user taps on it are ignored (📁 is the user-owned toggle).
